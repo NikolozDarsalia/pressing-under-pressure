@@ -1,0 +1,2922 @@
+---
+title: "leverkusen_spatial"
+output: html_document
+date: "2026-03-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+
+```{r cars}
+
+library(StatsBombR)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(ggsoccer)
+library(readr)
+
+```
+
+
+```{r cars}
+
+
+get_elo_on_date <- function(team, date) {
+  date <- as.Date(date)
+  
+  url <- paste0("http://api.clubelo.com/", team)
+  hist <- suppressWarnings(read_csv(url, show_col_types = FALSE))
+  
+  # ClubElo history typically has From/To date ranges per rating row.
+  hist <- hist %>%
+    mutate(
+      From = as.Date(From),
+      To   = as.Date(To)
+    ) %>%
+    arrange(From)
+  
+  # Find a row whose [From, To] interval contains the date
+  in_range <- hist %>%
+    filter((!is.na(From) & date >= From) & (is.na(To) | date <= To))
+  
+  if (nrow(in_range) >= 1) return(as.numeric(in_range$Elo[1]))
+  
+  # Fallback: last Elo before the date
+  before <- hist %>% filter(!is.na(From) & From <= date)
+  if (nrow(before) >= 1) return(as.numeric(before$Elo[nrow(before)]))
+  
+  NA_real_
+}
+```
+
+```{r cars}
+
+
+# ------------------------------------------------------------
+# 1) Get ALL matches from the target season
+# ------------------------------------------------------------
+comps <- FreeCompetitions() %>%
+  filter(competition_id == 9, season_name == "2023/2024")
+
+matches <- FreeMatches(comps)
+
+# Keep only matches where Bayer Leverkusen played
+leverkusen_matches <- matches %>%
+  filter(
+    home_team.home_team_name == "Bayer Leverkusen" |
+      away_team.away_team_name == "Bayer Leverkusen"
+  )
+
+
+```
+
+```{r cars}
+
+
+# ------------------------------------------------------------
+# 2) Download ALL events for those matches (this may take minutes)
+# ------------------------------------------------------------
+cat("Downloading full-season event data...\n")
+events_raw <- free_allevents(MatchesDF = leverkusen_matches)
+events <- allclean(events_raw)  # includes cleaning/splitting locations etc. [web:2]
+
+
+```
+
+```{r cars}
+
+
+
+# ------------------------------------------------------------
+# 3) Filter defensive actions: Pressures
+#    (In StatsBomb data, event type is stored in type.name) [web:20]
+# ------------------------------------------------------------
+pressure_events <- events %>%
+  filter(
+    team.name == "Bayer Leverkusen",
+    type.name == "Pressure",
+    !is.na(location.x),
+    !is.na(location.y)
+  )
+
+```
+
+
+```{r cars}
+
+
+# ------------------------------------------------------------
+# 4) Build match-level table: opponent + match date + ClubElo name
+# ------------------------------------------------------------
+match_info <- leverkusen_matches %>%
+  mutate(
+    opponent = ifelse(
+      home_team.home_team_name == "Bayer Leverkusen",
+      away_team.away_team_name,
+      home_team.home_team_name
+    ),
+    match_date = as.Date(match_date),
+    
+    # StatsBomb team names -> ClubElo team names
+    opponent_clubelo = case_when(
+      opponent == "Bayern Munich" ~ "Bayern",
+      opponent == "Borussia Dortmund" ~ "Dortmund",
+      opponent == "RB Leipzig" ~ "RBLeipzig",
+      opponent == "VfB Stuttgart" ~ "Stuttgart",
+      opponent == "Eintracht Frankfurt" ~ "Frankfurt",
+      opponent == "Borussia Mönchengladbach" ~ "Gladbach",
+      opponent == "VfL Wolfsburg" ~ "Wolfsburg",
+      opponent == "SC Freiburg" ~ "Freiburg",
+      opponent == "FC Augsburg" ~ "Augsburg",
+      opponent == "TSG Hoffenheim" ~ "Hoffenheim",
+      opponent == "Werder Bremen" ~ "Werder",
+      opponent == "FC Heidenheim" ~ "Heidenheim",
+      opponent == "Darmstadt 98" ~ "Darmstadt",
+      opponent == "FC Köln" ~ "Koeln",
+      opponent == "FSV Mainz 05" ~ "Mainz",
+      opponent == "VfL Bochum 1848" ~ "Bochum",
+      TRUE ~ gsub(" ", "", opponent)
+    )
+  ) %>%
+  select(match_id, match_date, opponent, opponent_clubelo)
+
+```
+
+
+```{r cars}
+
+
+
+# ------------------------------------------------------------
+# 5) Fetch opponent ELO on the match date
+# ------------------------------------------------------------
+cat("Fetching opponent ELO ratings...\n")
+# Note: get_elo_on_date() must exist in your environment/package.
+match_info <- match_info %>%
+  rowwise() %>%
+  mutate(opponent_elo = get_elo_on_date(opponent_clubelo, match_date)) %>%
+  ungroup()
+
+library(readr)
+library(dplyr)
+library(lubridate)
+
+```
+
+
+
+```{r cars}
+
+
+# ------------------------------------------------------------
+# 5A) Compute fixed Bundesliga thresholds from an anchor date
+# ------------------------------------------------------------
+anchor_date <- as.Date("2023-08-18")  # pick the pre-MD1 anchor you want
+
+# ClubElo "all teams by date" CSV API
+# (returns Rank, Club, Country, Level, Elo, From, To)
+clubelo_anchor <- readr::read_csv(
+  paste0("http://api.clubelo.com/", format(anchor_date, "%Y-%m-%d")),
+  show_col_types = FALSE
+)
+
+bundesliga_anchor <- clubelo_anchor %>%
+  filter(
+    Country == "GER",
+    Level == 1,
+    as.Date(From) <= anchor_date,
+    as.Date(To) >= anchor_date
+  )
+
+stopifnot(nrow(bundesliga_anchor) == 18)
+
+elo_cut <- quantile(
+  bundesliga_anchor$Elo,
+  probs = c(1/3, 2/3),
+  type = 7,        # R default; keep explicit
+  na.rm = TRUE
+)
+
+p33 <- unname(elo_cut[[1]])
+p67 <- unname(elo_cut[[2]])
+
+cat("Bundesliga fixed thresholds (anchor =", as.character(anchor_date), "):\n")
+cat("P33 =", round(p33, 2), " P67 =", round(p67, 2), "\n")
+
+```
+
+
+
+```{r cars}
+
+
+# ------------------------------------------------------------
+# 6) Join ELO onto each pressure event + create ELO tier
+# ------------------------------------------------------------
+pressure_events_final <- pressure_events %>%
+  left_join(match_info, by = "match_id") %>%
+  mutate(
+    elo_tier = case_when(
+      is.na(opponent_elo) ~ "Unknown",
+      opponent_elo < p33  ~ "Weak opponent",
+      opponent_elo < p67  ~ "Mid opponent",
+      TRUE                ~ "Top opponent"
+    )
+  )
+
+pressure_events_final <- pressure_events_final %>%
+  mutate(
+    elo_tier = factor(elo_tier, levels = c("Top opponent", "Mid opponent", "Weak opponent"))
+  )
+```
+
+
+
+```{r cars}
+
+# ------------------------------------------------------------
+# 7) Heatmap: pressure density by opponent tier
+# ------------------------------------------------------------
+ggplot(pressure_events_final) +
+  stat_density_2d(
+    aes(x = location.x, y = location.y, fill = after_stat(ndensity)),
+    geom = "raster", contour = FALSE, n = 200, h = c(15, 15)
+  ) +
+  scale_fill_viridis_c(
+    option = "magma", direction = -1, begin = 0.05,
+    name = "Relative\nDensity"
+  ) +
+  # White mask so density does not appear outside the pitch boundaries
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = 0, fill = "white", color = NA) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 80, ymax = Inf, fill = "white", color = NA) +
+  annotate("rect", xmin = -Inf, xmax = 0, ymin = -Inf, ymax = Inf, fill = "white", color = NA) +
+  annotate("rect", xmin = 120, xmax = Inf, ymin = -Inf, ymax = Inf, fill = "white", color = NA) +
+  annotate_pitch(dimensions = pitch_statsbomb, colour = "grey30", fill = NA) +
+  theme_pitch() +  # from ggsoccer [web:15]
+  annotate(
+    "segment",
+    x = 30, xend = 90, y = -5, yend = -5,
+    colour = "grey30", linewidth = 1,
+    arrow = arrow(length = unit(0.3, "cm"), type = "closed")
+  ) +
+  annotate(
+    "text",
+    x = 60, y = -9, label = "Attacking direction",
+    colour = "grey30", size = 4, fontface = "italic"
+  ) +
+  coord_fixed(xlim = c(-5, 125), ylim = c(-12, 85), expand = FALSE) +
+  labs(
+    title = "Bayer Leverkusen: Pressure Zones by Opponent Strength",
+    subtitle = "Relative spatial density (normalized; faceted by opponent ELO tier)"
+  ) +
+  theme(
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5, color = "grey40"),
+    strip.text = element_text(face = "bold", size = 12, color = "white"),
+    strip.background = element_rect(fill = "grey20"),
+    legend.position = "right"
+  ) +
+  facet_wrap(~ elo_tier, ncol = 3)
+
+```
+
+
+
+
+
+```{r cars}
+
+# ------------------------------------------------------------
+# 8) Match-level metrics + averages by opponent tier
+# ------------------------------------------------------------
+match_metrics <- pressure_events_final %>%
+  group_by(match_id, elo_tier) %>%
+  summarise(
+    total_pressures = n(),
+    dispersion_x = sd(location.x, na.rm = TRUE),
+    dispersion_y = sd(location.y, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+dispersion_analysis <- match_metrics %>%
+  group_by(elo_tier) %>%
+  summarise(
+    matches_played = n(),
+    pressures_per_match = round(mean(total_pressures), 1),
+    dispersion_length_x = round(mean(dispersion_x), 1),
+    dispersion_width_y = round(mean(dispersion_y), 1),
+    area_dispersion_index = dispersion_length_x * dispersion_width_y,
+    .groups = "drop"
+  ) %>%
+  arrange(desc(pressures_per_match))
+
+print(dispersion_analysis)
+
+# Optional export:
+# ggsave("Leverkusen_Pressure_Heatmap.png", width = 15, height = 5.5, dpi = 300)
+
+
+
+```
+
+```{r cars}
+
+# ============================================================
+# CHUNK 1: Geospatial Setup (sf geometry)
+# ============================================================
+
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(ggsoccer)
+
+# ── StatsBomb coordinate system ──────────────────────────────
+# Full pitch:     x ∈ [0, 120],  y ∈ [0, 80]
+# Attacking box:  x ∈ [102, 120], y ∈ [18, 62]
+# ─────────────────────────────────────────────────────────────
+
+# 1a) Create the penalty box as an sf POLYGON
+box_coords <- matrix(
+  c(102, 18,
+    120, 18,
+    120, 62,
+    102, 62,
+    102, 18),   # close the ring
+  ncol = 2, byrow = TRUE
+)
+
+penalty_box_sf <- st_polygon(list(box_coords)) %>%
+  st_sfc(crs = NA_crs_)  # flat 2D, no geographic CRS needed
+
+# 1b) Extract the BOUNDARY of the box (the four lines)
+#     We only care about the LEFT edge (x = 102) — the "rule border"
+#     But st_boundary() gives all four sides; st_distance() will
+#     automatically find the shortest distance to ANY side, which
+#     for events to the left of x=102 will always be the left edge.
+penalty_box_boundary <- st_boundary(penalty_box_sf)
+
+# 1c) (Optional) Extract ONLY the entry line (x = 102) explicitly
+#     for cleaner visualisations later
+entry_line_coords <- matrix(
+  c(102, 18,
+    102, 62),
+  ncol = 2, byrow = TRUE
+)
+entry_line_sf <- st_linestring(entry_line_coords) %>%
+  st_sfc(crs = NA_crs_)
+
+# 1d) Quick sanity-check plot
+ggplot() +
+  annotate_pitch(dimensions = pitch_statsbomb, colour = "grey40", fill = "white") +
+  geom_sf(data = penalty_box_sf,
+          fill = "steelblue", alpha = 0.2,
+          inherit.aes = FALSE) +
+  geom_sf(data = entry_line_sf,
+          colour = "red", linewidth = 1.2,
+          inherit.aes = FALSE) +
+  coord_sf(xlim = c(80, 125), ylim = c(10, 70), expand = FALSE) +
+  labs(title = "Penalty Box Geometry Check",
+       subtitle = "Blue = box polygon | Red = RDD threshold line (x = 102)") +
+  theme_pitch()
+
+```
+
+```{r cars}
+
+# ============================================================
+# CHUNK 2: Diagnostic — check what's in pressure_events_final
+# ============================================================
+
+# 2a) Shape and key columns
+cat("Dimensions:", dim(pressure_events_final), "\n\n")
+
+# 2b) All column names (so we can find duration + ball location fields)
+cat("=== ALL COLUMN NAMES ===\n")
+print(names(pressure_events_final))
+
+# 2c) Focus on columns likely relevant to our outcome variables
+#     StatsBomb typically has: duration, ball_receipt columns,
+#     or counterpress fields. Let's check what's non-NA.
+relevant_cols <- names(pressure_events_final)[
+  grepl("duration|ball|pressure|location|counterpress|intensity",
+        names(pressure_events_final), ignore.case = TRUE)
+]
+
+cat("\n=== POTENTIALLY RELEVANT COLUMNS ===\n")
+print(relevant_cols)
+
+# 2d) Sample values for those columns
+cat("\n=== SAMPLE VALUES (first 5 rows) ===\n")
+pressure_events_final %>%
+  select(any_of(relevant_cols)) %>%
+  slice(1:5) %>%
+  glimpse()
+
+# 2e) Check missingness in duration specifically
+if ("duration" %in% names(pressure_events_final)) {
+  cat("\nDuration — NAs:",
+      sum(is.na(pressure_events_final$duration)),
+      "out of", nrow(pressure_events_final), "\n")
+  cat("Duration summary:\n")
+  print(summary(pressure_events_final$duration))
+}
+
+```
+
+
+```{r cars}
+
+# ============================================================
+# CHUNK 3: sf Points + Signed Distance to Penalty Box Line
+# ============================================================
+
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(ggsoccer)
+
+# ── 3a) Convert pressure events to sf POINT object ───────────
+pressure_sf <- pressure_events_final %>%
+  filter(!is.na(location.x), !is.na(location.y)) %>%
+  st_as_sf(coords = c("location.x", "location.y"), crs = NA_crs_, remove = FALSE)
+
+cat("Total pressure events converted to sf:", nrow(pressure_sf), "\n")
+
+# ── 3b) Compute raw (unsigned) distance to the box BOUNDARY ──
+#    st_distance finds shortest distance to any side of the box
+#    For events outside the box, this will be the left edge (x=102)
+#    For events inside the box, this will also be the nearest edge
+
+dist_matrix <- st_distance(pressure_sf, penalty_box_boundary)
+pressure_sf$dist_to_boundary <- as.numeric(dist_matrix[, 1])
+
+# ── 3c) Create SIGNED distance ────────────────────────────────
+#    Convention:  Positive  = outside the box (x < 102)
+#                 Negative  = inside the box  (x > 102)
+#    This is the RDD "running variable" X
+
+pressure_sf <- pressure_sf %>%
+  mutate(
+    inside_box = location.x > 102 & location.y > 18 & location.y < 62,
+    dist_signed = ifelse(inside_box, -dist_to_boundary, dist_to_boundary)
+  )
+
+# ── 3d) CRITICAL CHECK: distribution of location.x ───────────
+cat("\n=== location.x distribution ===\n")
+print(summary(pressure_sf$location.x))
+
+cat("\nEvents by zone:\n")
+pressure_sf %>%
+  st_drop_geometry() %>%
+  mutate(zone = case_when(
+    location.x < 60  ~ "Own half (x < 60)",
+    location.x < 80  ~ "Mid third (60-80)",
+    location.x < 102 ~ "Attacking third, outside box (80-102)",
+    TRUE             ~ "Inside penalty box (x > 102)"
+  )) %>%
+  count(zone) %>%
+  mutate(pct = round(100 * n / sum(n), 1)) %>%
+  print()
+
+# ── 3e) Bandwidth filter: keep only events within 20m of line ─
+#    This is the "local" comparison window for the RDD
+BANDWIDTH <- 20  # metres — we'll let rdrobust optimise later
+
+pressure_rdd <- pressure_sf %>%
+  filter(abs(dist_signed) <= BANDWIDTH)
+
+cat("\nEvents within", BANDWIDTH, "m bandwidth:", nrow(pressure_rdd), "\n")
+cat("  Inside box: ", sum(pressure_rdd$inside_box), "\n")
+cat("  Outside box:", sum(!pressure_rdd$inside_box), "\n")
+
+# ── 3f) Build the two outcome variables ───────────────────────
+
+# OUTCOME 1: Duration (already clean)
+# OUTCOME 2: distance.ToD1.360 — if available, else distance.ToD1
+if ("distance.ToD1.360" %in% names(pressure_rdd)) {
+  pressure_rdd <- pressure_rdd %>%
+    mutate(nearest_defender_dist = distance.ToD1.360)
+  cat("\nUsing distance.ToD1.360 for Outcome 2\n")
+} else if ("distance.ToD1" %in% names(pressure_rdd)) {
+  pressure_rdd <- pressure_rdd %>%
+    mutate(nearest_defender_dist = distance.ToD1)
+  cat("\nUsing distance.ToD1 for Outcome 2\n")
+} else {
+  cat("\nWARNING: No distance.ToD1 column found. Outcome 2 will be skipped.\n")
+}
+
+cat("\nOutcome 2 (nearest_defender_dist) summary:\n")
+print(summary(pressure_rdd$nearest_defender_dist))
+cat("NAs in Outcome 2:", sum(is.na(pressure_rdd$nearest_defender_dist)), "\n")
+
+# ── 3g) Quick spatial sanity check: plot events near the box ──
+pressure_rdd %>%
+  st_drop_geometry() %>%
+  ggplot(aes(x = dist_signed, fill = inside_box)) +
+  geom_histogram(binwidth = 1, colour = "white", linewidth = 0.2) +
+  geom_vline(xintercept = 0, colour = "red", linewidth = 1.2, linetype = "dashed") +
+  scale_fill_manual(values = c("FALSE" = "steelblue", "TRUE" = "tomato"),
+                    labels = c("Outside box", "Inside box"),
+                    name = "") +
+  labs(
+    title = "Distribution of Pressure Events Around the Penalty Box Line",
+    subtitle = paste0("Within ±", BANDWIDTH, "m bandwidth | Red line = RDD threshold (x = 102)"),
+    x = "Signed Distance to Penalty Box Line (m)\nPositive = outside | Negative = inside",
+    y = "Count"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "top")
+
+```
+
+
+
+```{r}
+# ============================================================
+# CHUNK 4A: Diagnose alternative Outcome 2 variables
+# ============================================================
+
+# Check the non-360 distance columns and other candidates
+alt_cols <- c("distance.ToD1", "distance.ToD2", 
+              "counterpress", "DefendersBehindBall",
+              "AttackersBehindBall", "DefendersInCone",
+              "density", "density.incone")
+
+cat("=== Alternative Outcome 2 candidates (within bandwidth) ===\n")
+for (col in alt_cols) {
+  if (col %in% names(pressure_rdd)) {
+    vals <- pressure_rdd %>% st_drop_geometry() %>% pull(!!col)
+    n_valid <- sum(!is.na(vals))
+    cat(sprintf("%-30s | valid: %4d / %4d | mean: %.3f\n",
+                col, n_valid, nrow(pressure_rdd),
+                ifelse(n_valid > 0, mean(vals, na.rm = TRUE), NA)))
+  } else {
+    cat(sprintf("%-30s | NOT FOUND\n", col))
+  }
+}
+```
+
+
+
+
+```{r}
+# ============================================================
+# CHUNK 4B: Binned Scatter — the RDD "Money Shot"
+# ============================================================
+
+library(dplyr)
+library(ggplot2)
+
+# ── Parameters ───────────────────────────────────────────────
+BIN_WIDTH <- 1.0   # 1-metre bins as per documentation spec
+
+# ── Bin the running variable and compute mean duration ───────
+binned_data <- pressure_rdd %>%
+  st_drop_geometry() %>%
+  mutate(
+    dist_bin = floor(dist_signed / BIN_WIDTH) * BIN_WIDTH + BIN_WIDTH / 2
+  ) %>%
+  group_by(dist_bin) %>%
+  summarise(
+    mean_duration    = mean(duration, na.rm = TRUE),
+    se_duration      = sd(duration, na.rm = TRUE) / sqrt(n()),
+    n                = n(),
+    inside_box       = first(dist_bin) < 0,
+    .groups = "drop"
+  ) %>%
+  filter(n >= 5)  # drop bins with too few observations
+
+# ── Plot ─────────────────────────────────────────────────────
+ggplot(binned_data, aes(x = dist_bin, y = mean_duration, colour = inside_box)) +
+  
+  # Confidence ribbon
+  geom_ribbon(aes(ymin = mean_duration - 1.96 * se_duration,
+                  ymax = mean_duration + 1.96 * se_duration,
+                  fill  = inside_box),
+              alpha = 0.15, colour = NA) +
+  
+  # Binned means
+  geom_point(aes(size = n), alpha = 0.85) +
+  
+  # Separate local polynomial trend lines on each side
+  geom_smooth(data = filter(binned_data, !inside_box),
+              method = "lm", formula = y ~ poly(x, 2),
+              se = FALSE, linewidth = 1.1, linetype = "solid") +
+  geom_smooth(data = filter(binned_data, inside_box),
+              method = "lm", formula = y ~ poly(x, 2),
+              se = FALSE, linewidth = 1.1, linetype = "solid") +
+  
+  # RDD threshold line
+  geom_vline(xintercept = 0, colour = "black",
+             linewidth = 1.2, linetype = "dashed") +
+  annotate("text", x = 0.4, y = max(binned_data$mean_duration) * 0.97,
+           label = "Penalty box\nboundary", hjust = 0,
+           size = 3.5, colour = "black", fontface = "italic") +
+  
+  scale_colour_manual(values = c("FALSE" = "#2166ac", "TRUE" = "#d6604d"),
+                      labels = c("Outside box", "Inside box"), name = "") +
+  scale_fill_manual(  values = c("FALSE" = "#2166ac", "TRUE" = "#d6604d"),
+                      guide  = "none") +
+  scale_size_continuous(range = c(2, 6), name = "Events\nper bin") +
+  
+  labs(
+    title    = "RDD: Pressure Duration Around the Penalty Box Boundary",
+    subtitle = "Bayer Leverkusen 2023/24 Bundesliga | Bins = 1m | Shaded = 95% CI",
+    x        = "Signed Distance to Penalty Box Line (m)\n← Inside box  |  Outside box →",
+    y        = "Mean Pressure Duration (seconds)"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title    = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, colour = "grey40"),
+    legend.position = "top",
+    panel.grid.minor = element_blank()
+  )
+
+```
+
+
+
+```{r}
+# ============================================================
+# CHUNK 5: Formal RDD — rdrobust models
+# ============================================================
+
+# install.packages("rdrobust") # run once if needed
+library(rdrobust)
+library(dplyr)
+
+rdd_data <- pressure_rdd %>% st_drop_geometry()
+
+# ── 5a) Baseline model — full sample ─────────────────────────
+#    Y = duration, X = dist_signed, cutoff = 0
+#    D = 1 if inside box (X < 0)
+#    rdrobust automatically selects optimal bandwidth (MSE)
+
+cat("=======================================================\n")
+cat("MODEL 1: Baseline — All matches, Outcome = Duration\n")
+cat("=======================================================\n")
+
+rdd_base <- rdrobust(
+  y    = rdd_data$duration,
+  x    = rdd_data$dist_signed,
+  c    = 0,           # cutoff
+  kernel = "triangular",  # standard in RDD literature
+  bwselect = "mserd"  # MSE-optimal bandwidth, same on both sides
+)
+summary(rdd_base)
+
+# ── 5b) Extract key numbers for reporting ────────────────────
+cat("\n--- Key Estimates (Model 1) ---\n")
+cat("Optimal bandwidth (h):", round(rdd_base$bws[1,1], 3), "metres\n")
+cat("Observations in bandwidth — Left (inside):",
+    rdd_base$N_h[1], "| Right (outside):", rdd_base$N_h[2], "\n")
+cat("LATE estimate (beta):", round(rdd_base$coef[1], 4), "\n")
+cat("p-value:             ", round(rdd_base$pv[1], 4), "\n")
+
+# ── 5c) By ELO tier ──────────────────────────────────────────
+tiers <- c("Top opponent", "Mid opponent", "Weak opponent")
+rdd_by_tier <- list()
+
+cat("\n=======================================================\n")
+cat("MODEL 2: By ELO Tier — Outcome = Duration\n")
+cat("=======================================================\n")
+
+for (tier in tiers) {
+  tier_data <- rdd_data %>% filter(elo_tier == tier)
+  
+  cat("\n--- Tier:", tier, "(n =", nrow(tier_data), ") ---\n")
+  
+  if (nrow(tier_data) < 50) {
+    cat("Too few observations, skipping.\n")
+    next
+  }
+  
+  tryCatch({
+    fit <- rdrobust(
+      y        = tier_data$duration,
+      x        = tier_data$dist_signed,
+      c        = 0,
+      kernel   = "triangular",
+      bwselect = "mserd"
+    )
+    rdd_by_tier[[tier]] <- fit
+    
+    cat("Bandwidth (h):", round(fit$bws[1,1], 3), "m\n")
+    cat("N left/right: ", fit$N_h[1], "/", fit$N_h[2], "\n")
+    cat("Beta (LATE):  ", round(fit$coef[1], 4), "\n")
+    cat("p-value:      ", round(fit$pv[1],  4), "\n")
+    
+  }, error = function(e) {
+    cat("Model failed:", conditionMessage(e), "\n")
+  })
+}
+
+# ── 5d) Coefficient comparison table ─────────────────────────
+cat("\n=======================================================\n")
+cat("SUMMARY: Beta coefficients by ELO tier\n")
+cat("=======================================================\n")
+
+results_table <- tibble(
+  tier      = c("All matches", tiers),
+  beta      = c(
+    rdd_base$coef[1],
+    sapply(tiers, function(t) {
+      if (!is.null(rdd_by_tier[[t]])) rdd_by_tier[[t]]$coef[1] else NA_real_
+    })
+  ),
+  pval      = c(
+    rdd_base$pv[1],
+    sapply(tiers, function(t) {
+      if (!is.null(rdd_by_tier[[t]])) rdd_by_tier[[t]]$pv[1] else NA_real_
+    })
+  ),
+  bw        = c(
+    rdd_base$bws[1,1],
+    sapply(tiers, function(t) {
+      if (!is.null(rdd_by_tier[[t]])) rdd_by_tier[[t]]$bws[1,1] else NA_real_
+    })
+  ),
+  n_inside  = c(
+    rdd_base$N_h[1],
+    sapply(tiers, function(t) {
+      if (!is.null(rdd_by_tier[[t]])) rdd_by_tier[[t]]$N_h[1] else NA_real_
+    })
+  ),
+  n_outside = c(
+    rdd_base$N_h[2],
+    sapply(tiers, function(t) {
+      if (!is.null(rdd_by_tier[[t]])) rdd_by_tier[[t]]$N_h[2] else NA_real_
+    })
+  )
+) %>%
+  mutate(
+    significant = ifelse(pval < 0.05, "✓", ""),
+    across(c(beta, pval, bw), ~ round(.x, 3))
+  )
+
+print(results_table)
+```
+
+
+```{r}
+# ============================================================
+# CHUNK 6: Clean dataset for Pressing Traps analysis
+# ============================================================
+
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(ggsoccer)
+
+# ── 6a) Fix counterpress: StatsBomb convention NA = FALSE ─────
+press_clean <- pressure_events_final %>%
+  filter(!is.na(location.x), !is.na(location.y)) %>%
+  mutate(
+    # Binary outcome: did this press trigger an immediate recovery?
+    counterpress_flag = ifelse(is.na(counterpress), FALSE, TRUE),
+    
+    # Spatial zone labels (7-zone grid — standard in football analytics)
+    # Zones follow the "third + channel" convention
+    third = case_when(
+      location.x <  40 ~ "Defensive Third",
+      location.x <  80 ~ "Middle Third",
+      TRUE             ~ "Attacking Third"
+    ),
+    channel = case_when(
+      location.y < 26.7 ~ "Left Channel",
+      location.y < 53.3 ~ "Central Channel",
+      TRUE              ~ "Right Channel"
+    ),
+    zone = paste(third, channel, sep = " — "),
+    
+    # Compact 6-zone version for modelling (drop defensive third — rare presses)
+    zone6 = case_when(
+      location.x <  40 ~ "D3",           # Defensive third (any channel)
+      location.x <  80 & location.y < 26.7 ~ "M3_L",
+      location.x <  80 & location.y < 53.3 ~ "M3_C",
+      location.x <  80                     ~ "M3_R",
+      location.x >= 80 & location.y < 26.7 ~ "A3_L",
+      location.x >= 80 & location.y < 53.3 ~ "A3_C",
+      TRUE                                  ~ "A3_R"
+    ),
+    zone6 = factor(zone6,
+                   levels = c("D3","M3_L","M3_C","M3_R",
+                              "A3_L","A3_C","A3_R"))
+  )
+
+# ── 6b) Convert to sf points ──────────────────────────────────
+press_sf <- press_clean %>%
+  st_as_sf(coords = c("location.x", "location.y"),
+           crs = NA_crs_, remove = FALSE)
+
+# ── 6c) Summary statistics ────────────────────────────────────
+cat("=== Full Dataset ===\n")
+cat("Total press events:", nrow(press_clean), "\n")
+cat("Counterpress events:", sum(press_clean$counterpress_flag), "\n")
+cat("Baseline counterpress rate:",
+    round(mean(press_clean$counterpress_flag) * 100, 1), "%\n")
+
+cat("\n=== Counterpress rate by Zone ===\n")
+press_clean %>%
+  group_by(zone6) %>%
+  summarise(
+    n_presses       = n(),
+    n_counterpress  = sum(counterpress_flag),
+    cp_rate         = round(mean(counterpress_flag) * 100, 1),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(cp_rate)) %>%
+  print()
+
+cat("\n=== Counterpress rate by ELO tier ===\n")
+press_clean %>%
+  group_by(elo_tier) %>%
+  summarise(
+    n_presses      = n(),
+    n_counterpress = sum(counterpress_flag),
+    cp_rate        = round(mean(counterpress_flag) * 100, 1),
+    .groups = "drop"
+  ) %>%
+  print()
+
+cat("\n=== Counterpress rate by Zone × ELO tier ===\n")
+press_clean %>%
+  filter(zone6 != "D3") %>%   # too few observations in defensive third
+  group_by(zone6, elo_tier) %>%
+  summarise(
+    n   = n(),
+    cp_rate = round(mean(counterpress_flag) * 100, 1),
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_wider(names_from = elo_tier, values_from = c(n, cp_rate)) %>%
+  print()
+
+```
+
+```{r}
+# ============================================================
+# CHUNK 7: KDE Maps — Press density vs Counterpress density
+# ============================================================
+
+library(ggplot2)
+library(ggsoccer)
+library(dplyr)
+library(patchwork)  # install.packages("patchwork") if needed
+
+# ── 7a) Separate ALL presses from TRAP presses ────────────────
+press_all <- press_clean
+press_cp  <- press_clean %>% filter(counterpress_flag == TRUE)
+
+# ── 7b) Helper: build one KDE heatmap layer ──────────────────
+make_kde_map <- function(data, title, subtitle,
+                         fill_col = "magma", cap_label = "CP Density") {
+  ggplot(data) +
+    stat_density_2d(
+      aes(x = location.x, y = location.y, fill = after_stat(ndensity)),
+      geom = "raster", contour = FALSE, n = 200, h = c(12, 12)
+    ) +
+    scale_fill_viridis_c(
+      option = fill_col, direction = -1, begin = 0.05,
+      name = cap_label, limits = c(0, 1)
+    ) +
+    # Mask outside pitch boundaries
+    annotate("rect", xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=0,   fill="white", color=NA) +
+    annotate("rect", xmin=-Inf, xmax=Inf, ymin=80,   ymax=Inf, fill="white", color=NA) +
+    annotate("rect", xmin=-Inf, xmax=0,   ymin=-Inf, ymax=Inf, fill="white", color=NA) +
+    annotate("rect", xmin=120,  xmax=Inf, ymin=-Inf, ymax=Inf, fill="white", color=NA) +
+    annotate_pitch(dimensions = pitch_statsbomb,
+                   colour = "grey30", fill = NA) +
+    # Zone grid lines
+    geom_vline(xintercept = c(40, 80), colour = "white",
+               linewidth = 0.5, linetype = "dashed", alpha = 0.6) +
+    geom_hline(yintercept = c(26.7, 53.3), colour = "white",
+               linewidth = 0.5, linetype = "dashed", alpha = 0.6) +
+    coord_fixed(xlim = c(-2, 122), ylim = c(-5, 83), expand = FALSE) +
+    labs(title = title, subtitle = subtitle) +
+    theme_pitch() +
+    theme(
+      plot.title    = element_text(face = "bold", size = 13, hjust = 0.5),
+      plot.subtitle = element_text(size = 10,  hjust = 0.5, colour = "grey40"),
+      legend.position = "right",
+      plot.background  = element_rect(fill = "white", color = NA),
+      panel.background = element_rect(fill = "white", color = NA)
+    )
+}
+
+# ── 7c) Map 1: All presses (baseline density) ─────────────────
+map_all <- make_kde_map(
+  press_all,
+  title    = "A) All Pressing Events",
+  subtitle = "Spatial density — where Leverkusen press",
+  fill_col = "Blues",
+  cap_label = "Press\nDensity"
+)
+
+# ── 7d) Map 2: Counterpress events only (trap density) ────────
+map_cp <- make_kde_map(
+  press_cp,
+  title    = "B) Counterpress Events (Traps Triggered)",
+  subtitle = "Spatial density — where presses win the ball back",
+  fill_col = "magma",
+  cap_label = "Trap\nDensity"
+)
+
+# ── 7e) Map 3-5: Counterpress density by ELO tier ─────────────
+tier_maps <- lapply(
+  c("Top opponent", "Mid opponent", "Weak opponent"),
+  function(tier) {
+    d <- press_cp %>% filter(elo_tier == tier)
+    n <- nrow(d)
+    make_kde_map(
+      d,
+      title    = paste0("Trap Zones vs ", tier),
+      subtitle = paste0("n = ", n, " counterpress events"),
+      fill_col = "magma",
+      cap_label = "Trap\nDensity"
+    )
+  }
+)
+
+# ── 7f) Compose final figures ─────────────────────────────────
+
+# Figure 1: Side-by-side press vs trap density
+fig1 <- map_all + map_cp +
+  plot_annotation(
+    title   = "Bayer Leverkusen 2023/24: Press Density vs Trap Density",
+    subtitle = "Left: where they press | Right: where they win the ball",
+    theme = theme(
+      plot.title    = element_text(face = "bold", size = 15, hjust = 0.5),
+      plot.subtitle = element_text(size = 11, hjust = 0.5, colour = "grey40")
+    )
+  )
+
+# Figure 2: Trap zones by ELO tier
+fig2 <- tier_maps[[1]] + tier_maps[[2]] + tier_maps[[3]] +
+  plot_layout(ncol = 3) +
+  plot_annotation(
+    title    = "Bayer Leverkusen: Trap Zone Geography by Opponent Quality",
+    subtitle = "Counterpress event density — does the trap shift against stronger teams?",
+    theme = theme(
+      plot.title    = element_text(face = "bold", size = 15, hjust = 0.5),
+      plot.subtitle = element_text(size = 11, hjust = 0.5, colour = "grey40")
+    )
+  )
+ggsave("fig1_press_vs_trap_density.png", plot = fig1, width = 14, height = 6,  dpi = 300)
+ggsave("fig2_trap_zones_by_elo.png",     plot = fig2, width = 18, height = 6.5, dpi = 300)
+
+print(fig1)
+print(fig2)
+
+```
+
+```{r}
+# ============================================================
+# CHUNK 8: Formal Vector Geometry — Zone Polygons + st_join
+# ============================================================
+
+library(sf)
+library(dplyr)
+
+# ── 8a) Build zone polygons formally with st_polygon() ───────
+# Pitch: x ∈ [0,120], y ∈ [0,80]
+# Thirds: D3 x<40, M3 40-80, A3 x>80
+# Channels: Left y<26.7, Central 26.7-53.3, Right y>53.3
+
+make_zone_polygon <- function(xmin, xmax, ymin, ymax, name) {
+  coords <- matrix(
+    c(xmin, ymin,
+      xmax, ymin,
+      xmax, ymax,
+      xmin, ymax,
+      xmin, ymin),
+    ncol = 2, byrow = TRUE
+  )
+  st_sf(
+    zone6    = name,
+    geometry = st_sfc(st_polygon(list(coords)), crs = NA_crs_)
+  )
+}
+
+# Create all 7 zones
+zone_polygons <- bind_rows(
+  make_zone_polygon(  0,  40,  0, 80, "D3"),
+  make_zone_polygon( 40,  80,  0, 26.7, "M3_L"),
+  make_zone_polygon( 40,  80, 26.7, 53.3, "M3_C"),
+  make_zone_polygon( 40,  80, 53.3, 80, "M3_R"),
+  make_zone_polygon( 80, 120,  0, 26.7, "A3_L"),
+  make_zone_polygon( 80, 120, 26.7, 53.3, "A3_C"),
+  make_zone_polygon( 80, 120, 53.3, 80, "A3_R")
+)
+
+# ── 8b) Formal spatial join: assign zone to each press event ──
+press_sf_joined <- press_sf %>%
+  st_join(zone_polygons, join = st_intersects, suffix = c("_orig", "_spatial"))
+
+# Verify spatial join matches case_when zone assignment
+cat("=== Spatial join verification ===\n")
+cat("Events successfully assigned a zone:",
+    sum(!is.na(press_sf_joined$zone6_spatial)), "\n")
+cat("Events on zone boundary (NA):",
+    sum(is.na(press_sf_joined$zone6_spatial)), "\n")
+
+# Cross-check with original zone6 from case_when
+check <- press_sf_joined %>%
+  st_drop_geometry() %>%
+  mutate(match = zone6_orig == zone6_spatial) %>%
+  summarise(
+    total       = n(),
+    matching    = sum(match, na.rm = TRUE),
+    mismatch    = sum(!match, na.rm = TRUE),
+    pct_match   = round(mean(match, na.rm = TRUE) * 100, 1)
+  )
+cat("\nZone assignment agreement (spatial vs case_when):\n")
+print(check)
+
+# Use spatial zone as the definitive assignment
+press_sf_joined <- press_sf_joined %>%
+  mutate(zone6 = zone6_spatial) %>%
+  select(-zone6_orig, -zone6_spatial)
+
+# ── 8c) Visualise zone polygons ───────────────────────────────
+zone_labels <- zone_polygons %>%
+  st_centroid() %>%
+  mutate(
+    x = st_coordinates(.)[,1],
+    y = st_coordinates(.)[,2]
+  ) %>%
+  st_drop_geometry()
+
+ggplot() +
+  annotate_pitch(dimensions = pitch_statsbomb,
+                 colour = "grey40", fill = "white") +
+  geom_sf(data = zone_polygons,
+          aes(fill = zone6), alpha = 0.3,
+          colour = "grey20", linewidth = 0.6,
+          inherit.aes = FALSE) +
+  geom_text(data = zone_labels,
+            aes(x = x, y = y, label = zone6),
+            size = 4, fontface = "bold", colour = "grey20") +
+  coord_sf(xlim = c(-2, 122), ylim = c(-3, 83), expand = FALSE) +
+  scale_fill_brewer(palette = "Set2", guide = "none") +
+  labs(
+    title    = "Formal Zone Geometry (st_polygon)",
+    subtitle = "7 zones built as sf polygons — press events assigned via st_intersects"
+  ) +
+  theme_pitch() +
+  theme(
+    plot.title    = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, colour = "grey40"),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+```{r}
+# ============================================================
+# CHUNK 9: Raster Operations with terra
+# ============================================================
+
+# install.packages("terra") if needed
+library(terra)
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(ggsoccer)
+
+# ── 9a) Create a blank raster over the pitch ─────────────────
+# Resolution: 1x1 metre cells over the 120x80 pitch
+pitch_raster <- rast(
+  xmin = 0, xmax = 120,
+  ymin = 0, ymax = 80,
+  resolution = 1,   # 1 metre per cell
+  crs = ""          # flat 2D, no geographic CRS
+)
+
+cat("Raster dimensions:", dim(pitch_raster), "\n")
+cat("Number of cells:  ", ncell(pitch_raster), "\n")
+
+# ── 9b) Rasterize press events — TWO layers ───────────────────
+# Layer 1: Press count per cell (all presses)
+# Layer 2: Counterpress count per cell (trap triggers only)
+
+press_coords <- press_sf_joined %>%
+  st_drop_geometry() %>%
+  select(location.x, location.y, counterpress_flag)
+
+# Convert to SpatVector for terra
+press_vect <- vect(
+  press_coords,
+  geom  = c("location.x", "location.y"),
+  crs   = ""
+)
+
+# Rasterize: count of ALL press events per cell
+rast_press <- rasterize(press_vect, pitch_raster, fun = "count")
+names(rast_press) <- "press_count"
+
+# Rasterize: count of COUNTERPRESS events per cell
+press_cp_vect <- vect(
+  press_coords %>% filter(counterpress_flag == TRUE),
+  geom = c("location.x", "location.y"),
+  crs  = ""
+)
+rast_cp <- rasterize(press_cp_vect, pitch_raster, fun = "count")
+names(rast_cp) <- "cp_count"
+
+# ── 9c) Derive trap rate raster ───────────────────────────────
+# Trap Rate = counterpress / press (per cell)
+# Replace 0s with NA to avoid division noise in empty cells
+
+rast_press_safe <- classify(rast_press, cbind(0, NA))
+rast_rate       <- rast_cp / rast_press_safe
+names(rast_rate) <- "trap_rate"
+
+cat("\nTrap rate raster summary:\n")
+print(summary(values(rast_rate), na.rm = TRUE))
+
+# ── 9d) Smooth the trap rate with a focal (moving window) ─────
+# 5x5 cell focal mean = spatial smoothing, equivalent to local average
+rast_rate_smooth <- focal(rast_rate, w = 5, fun = "mean", na.rm = TRUE)
+names(rast_rate_smooth) <- "trap_rate_smooth"
+
+# ── 9e) ZONAL STATISTICS ──────────────────────────────────────
+# This is the key vector-raster operation:
+# For each zone polygon, extract mean trap rate from the raster
+
+# Convert zone polygons to SpatVector
+zone_vect <- vect(zone_polygons)
+
+# Zonal statistics: mean trap rate per zone
+zonal_stats <- zonal(rast_rate_smooth, zone_vect, fun = "mean", na.rm = TRUE)
+zonal_stats$zone6 <- zone_polygons$zone6
+
+cat("\n=== Zonal Statistics: Mean Trap Rate per Zone ===\n")
+zonal_stats %>%
+  arrange(desc(trap_rate_smooth)) %>%
+  mutate(trap_rate_pct = round(trap_rate_smooth * 100, 1)) %>%
+  select(zone6, trap_rate_pct) %>%
+  print()
+
+# ── 9f) Join zonal stats back to zone polygons for mapping ────
+zone_polygons_stats <- zone_polygons %>%
+  left_join(zonal_stats, by = "zone6") %>%
+  mutate(trap_rate_pct = round(trap_rate_smooth * 100, 1))
+
+# ── 9g) Figure 3: Trap Rate Choropleth (vector over raster) ───
+# Convert smoothed raster to data frame for ggplot
+rast_df <- as.data.frame(rast_rate_smooth, xy = TRUE) %>%
+  filter(!is.na(trap_rate_smooth))
+
+# Zone centroids for labels
+zone_centroids <- zone_polygons_stats %>%
+  st_centroid() %>%
+  mutate(
+    cx    = st_coordinates(.)[,1],
+    cy    = st_coordinates(.)[,2],
+    label = paste0(zone6, "\n", trap_rate_pct, "%")
+  ) %>%
+  st_drop_geometry()
+
+fig3 <- ggplot() +
+  # Raster layer: smoothed trap rate surface
+  geom_raster(data = rast_df,
+              aes(x = x, y = y, fill = trap_rate_smooth)) +
+  scale_fill_distiller(
+    palette  = "RdYlGn", direction = 1,
+    name     = "Trap Rate\n(smoothed)",
+    limits   = c(0, 0.6),
+    labels   = scales::percent_format(accuracy = 1)
+  ) +
+  # Vector layer: zone polygon borders
+  geom_sf(data = zone_polygons_stats,
+          fill = NA, colour = "white",
+          linewidth = 1.2, inherit.aes = FALSE) +
+  # Zone labels with zonal mean
+  geom_text(data = zone_centroids,
+            aes(x = cx, y = cy, label = label),
+            colour = "white", fontface = "bold",
+            size = 4, lineheight = 0.9) +
+  # Pitch overlay
+  annotate("rect", xmin=-Inf,xmax=Inf,ymin=-Inf,ymax=0,   fill="white",color=NA) +
+  annotate("rect", xmin=-Inf,xmax=Inf,ymin=80,  ymax=Inf, fill="white",color=NA) +
+  annotate("rect", xmin=-Inf,xmax=0,  ymin=-Inf,ymax=Inf, fill="white",color=NA) +
+  annotate("rect", xmin=120, xmax=Inf,ymin=-Inf,ymax=Inf, fill="white",color=NA) +
+  annotate_pitch(dimensions = pitch_statsbomb,
+                 colour = "grey90", fill = NA) +
+  coord_fixed(xlim = c(-2,122), ylim = c(-3,83), expand = FALSE) +
+  labs(
+    title    = "Leverkusen Pressing Trap Rate: Raster Surface + Zonal Statistics",
+    subtitle = "Cell-level trap rate (smoothed, 5m focal window) | Zone means via terra::zonal()"
+  ) +
+  theme_pitch() +
+  theme(
+    plot.title       = element_text(face = "bold", size = 13, hjust = 0.5),
+    plot.subtitle    = element_text(size = 10, hjust = 0.5, colour = "grey40"),
+    legend.position  = "right",
+    plot.background  = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+print(fig3)
+ggsave("fig3_trap_rate_raster_zonal.png", plot = fig3,
+       width = 10, height = 7, dpi = 300)
+```
+
+```{r}
+# ============================================================
+# CHUNK 10: Diagnostic — defensive actions in full events
+# ============================================================
+
+# ── 10a) Check event types available ─────────────────────────
+cat("=== All event types in full season data ===\n")
+events %>%
+  count(type.name, sort = TRUE) %>%
+  print(n = 40)
+
+# ── 10b) Filter defensive actions specifically ────────────────
+defensive_types <- c("Tackle", "Duel", "Foul Committed",
+                     "Block", "Interception", "Clearance")
+
+cat("\n=== Defensive event counts (Leverkusen only) ===\n")
+events %>%
+  filter(
+    team.name == "Bayer Leverkusen",
+    type.name %in% defensive_types,
+    !is.na(location.x),
+    !is.na(location.y)
+  ) %>%
+  count(type.name, sort = TRUE) %>%
+  print()
+
+# ── 10c) Inspect duel subtypes ────────────────────────────────
+cat("\n=== Duel subtypes ===\n")
+events %>%
+  filter(team.name == "Bayer Leverkusen",
+         type.name == "Duel") %>%
+  count(duel.type.name, duel.outcome.name, sort = TRUE) %>%
+  print(n = 30)
+
+# ── 10d) Inspect tackle structure if it exists separately ─────
+cat("\n=== Tackle events (if separate type) ===\n")
+events %>%
+  filter(team.name == "Bayer Leverkusen",
+         type.name == "Tackle") %>%
+  glimpse()
+
+# ── 10e) Spatial distribution check ──────────────────────────
+# How many duel/tackle events fall near the penalty box?
+cat("\n=== Defensive duels near penalty box (x > 80) ===\n")
+events %>%
+  filter(
+    team.name == "Bayer Leverkusen",
+    type.name %in% c("Duel", "Tackle", "Foul Committed"),
+    !is.na(location.x),
+    location.x > 80
+  ) %>%
+  count(type.name, sort = TRUE) %>%
+  print()
+
+# ── 10f) Check x distribution of all defensive duels ─────────
+cat("\n=== location.x summary for defensive duels ===\n")
+events %>%
+  filter(
+    team.name == "Bayer Leverkusen",
+    type.name == "Duel",
+    !is.na(location.x)
+  ) %>%
+  pull(location.x) %>%
+  summary() %>%
+  print()
+```
+
+```{r}
+# ============================================================
+# FIX: Rebuild match_info with elo_tier before Chunk 11
+# ============================================================
+
+match_info <- match_info %>%
+  mutate(
+    elo_tier = case_when(
+      is.na(opponent_elo)    ~ "Unknown",
+      opponent_elo < p33     ~ "Weak opponent",
+      opponent_elo < p67     ~ "Mid opponent",
+      TRUE                   ~ "Top opponent"
+    ),
+    elo_tier = factor(elo_tier,
+                      levels = c("Top opponent","Mid opponent","Weak opponent"))
+  )
+
+# ============================================================
+# CHUNK 11: Defensive Tackle RDD — own penalty box at x = 18
+# ============================================================
+
+library(sf)
+library(dplyr)
+
+# ── 11a) Join match info + ELO to full events ─────────────────
+events_enriched <- events %>%
+  left_join(
+    match_info %>% select(match_id, match_date, opponent,
+                          opponent_elo, elo_tier),
+    by = "match_id"
+  ) %>%
+  mutate(
+    elo_tier = factor(elo_tier,
+                      levels = c("Top opponent","Mid opponent","Weak opponent"))
+  )
+
+# ── 11b) Build defensive action dataset ───────────────────────
+defensive_duels <- events_enriched %>%
+  filter(
+    team.name    == "Bayer Leverkusen",
+    type.name    == "Duel",
+    !is.na(duel.type.name),
+    !is.na(location.x),
+    !is.na(location.y)
+  ) %>%
+  mutate(
+    is_tackle        = duel.type.name == "Tackle",
+    tackle_won       = duel.type.name == "Tackle" &
+                       duel.outcome.name %in% c("Won","Success In Play","Success Out"),
+    inside_own_box   = location.x < 18 &
+                       location.y > 18 & location.y < 62,
+    dist_signed_def  = location.x - 18
+  )
+
+cat("=== Defensive Duel Dataset ===\n")
+cat("Total defensive duels:", nrow(defensive_duels), "\n")
+cat("Tackle attempts:      ", sum(defensive_duels$is_tackle), "\n")
+cat("Aerial duels:         ", sum(!defensive_duels$is_tackle), "\n")
+cat("Inside own box:       ", sum(defensive_duels$inside_own_box), "\n")
+
+# ── 11c) Distribution around the box line ─────────────────────
+cat("\n=== Duels by distance to own box line ===\n")
+defensive_duels %>%
+  mutate(zone_def = case_when(
+    dist_signed_def < -5   ~ "Deep in own box (< -5m)",
+    dist_signed_def < 0    ~ "Just inside box (0 to -5m)",
+    dist_signed_def < 5    ~ "Just outside box (0 to 5m)",
+    dist_signed_def < 15   ~ "Near box (5-15m)",
+    TRUE                   ~ "Far from box (>15m)"
+  )) %>%
+  count(zone_def, is_tackle) %>%
+  tidyr::pivot_wider(names_from  = is_tackle,
+                     values_from = n,
+                     names_prefix = "tackle_") %>%
+  rename(aerial = `tackle_FALSE`, tackle = `tackle_TRUE`) %>%
+  mutate(
+    total       = aerial + tackle,
+    tackle_rate = round(100 * tackle / total, 1)
+  ) %>%
+  arrange(factor(zone_def, levels = c(
+    "Deep in own box (< -5m)", "Just inside box (0 to -5m)",
+    "Just outside box (0 to 5m)", "Near box (5-15m)", "Far from box (>15m)"
+  ))) %>%
+  print()
+
+# ── 11d) Bandwidth filter for RDD ─────────────────────────────
+BANDWIDTH_DEF <- 20
+
+rdd_def <- defensive_duels %>%
+  filter(abs(dist_signed_def) <= BANDWIDTH_DEF)
+
+cat("\n=== RDD Sample (±", BANDWIDTH_DEF, "m from x=18) ===\n")
+cat("Total events:  ", nrow(rdd_def), "\n")
+cat("Inside box:    ", sum(rdd_def$inside_own_box), "\n")
+cat("Outside box:   ", sum(!rdd_def$inside_own_box), "\n")
+cat("Tackle rate inside: ",
+    round(100 * mean(rdd_def$is_tackle[rdd_def$inside_own_box]), 1), "%\n")
+cat("Tackle rate outside:",
+    round(100 * mean(rdd_def$is_tackle[!rdd_def$inside_own_box]), 1), "%\n")
+
+# ── 11e) Convert to sf + compute distance to box geometry ─────
+own_box_coords <- matrix(
+  c(0, 18, 18, 18, 18, 62, 0, 62, 0, 18),
+  ncol = 2, byrow = TRUE
+)
+own_box_sf       <- st_sfc(st_polygon(list(own_box_coords)), crs = NA_crs_)
+own_box_boundary <- st_boundary(own_box_sf)
+
+rdd_def_sf <- rdd_def %>%
+  st_as_sf(coords = c("location.x","location.y"),
+           crs = NA_crs_, remove = FALSE)
+
+cat("\n=== Own box geometry check ===\n")
+cat("Events inside box via sf:",
+    sum(lengths(st_intersects(rdd_def_sf, own_box_sf)) > 0), "\n")
+
+# ── 11f) Distribution histogram ───────────────────────────────
+library(ggplot2)
+
+ggplot(rdd_def, aes(x = dist_signed_def, fill = inside_own_box)) +
+  geom_histogram(binwidth = 1, colour = "white", linewidth = 0.2) +
+  geom_vline(xintercept = 0, colour = "red",
+             linewidth = 1.2, linetype = "dashed") +
+  scale_fill_manual(
+    values = c("FALSE" = "steelblue", "TRUE" = "tomato"),
+    labels = c("Outside own box", "Inside own box"),
+    name   = ""
+  ) +
+  labs(
+    title    = "Defensive Duels Around Leverkusen's Own Penalty Box Line",
+    subtitle = paste0("±", BANDWIDTH_DEF,
+                      "m bandwidth | Red = RDD threshold (x = 18)"),
+    x = "Signed Distance to Own Box Line (m)\nNegative = inside | Positive = outside",
+    y = "Count"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title      = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle   = element_text(hjust = 0.5, colour = "grey40"),
+    legend.position = "top"
+  )
+```
+
+
+```{r}
+# ============================================================
+# CHUNK 12: Formal RDD — rdrobust on tackle probability
+# ============================================================
+
+library(rdrobust)
+library(dplyr)
+
+rdd_data_def <- rdd_def  # from Chunk 11
+
+# ── 12a) Baseline model ───────────────────────────────────────
+# Y = is_tackle (binary: 1 = tackle attempted, 0 = aerial)
+# X = dist_signed_def (positive = outside, negative = inside)
+# Cutoff = 0 (the x=18 box line)
+# Treatment D = 1 if inside box (X < 0) → expect negative beta
+
+cat("=======================================================\n")
+cat("MODEL 1: Baseline — All matches, Y = P(Tackle)\n")
+cat("=======================================================\n")
+
+rdd_base_def <- rdrobust(
+  y        = as.numeric(rdd_data_def$is_tackle),
+  x        = rdd_data_def$dist_signed_def,
+  c        = 0,
+  kernel   = "triangular",
+  bwselect = "mserd"
+)
+summary(rdd_base_def)
+
+cat("\n--- Key Estimates (Model 1) ---\n")
+cat("Optimal bandwidth (h):", round(rdd_base_def$bws[1,1], 3), "metres\n")
+cat("N inside bandwidth  — Left (inside box):",
+    rdd_base_def$N_h[1], "| Right (outside):", rdd_base_def$N_h[2], "\n")
+cat("LATE estimate (beta):", round(rdd_base_def$coef[1], 4), "\n")
+cat("p-value:             ", round(rdd_base_def$pv[1],  4), "\n")
+
+# ── 12b) By ELO tier ──────────────────────────────────────────
+tiers <- c("Top opponent", "Mid opponent", "Weak opponent")
+rdd_tier_def <- list()
+
+cat("\n=======================================================\n")
+cat("MODEL 2: By ELO Tier — Y = P(Tackle)\n")
+cat("=======================================================\n")
+
+for (tier in tiers) {
+  tier_data <- rdd_data_def %>% filter(elo_tier == tier)
+  cat("\n--- Tier:", tier, "(n =", nrow(tier_data), ") ---\n")
+
+  if (nrow(tier_data) < 40) {
+    cat("Too few observations, skipping.\n")
+    next
+  }
+
+  tryCatch({
+    fit <- rdrobust(
+      y        = as.numeric(tier_data$is_tackle),
+      x        = tier_data$dist_signed_def,
+      c        = 0,
+      kernel   = "triangular",
+      bwselect = "mserd"
+    )
+    rdd_tier_def[[tier]] <- fit
+    cat("Bandwidth (h):", round(fit$bws[1,1], 3), "m\n")
+    cat("N left/right: ", fit$N_h[1], "/", fit$N_h[2], "\n")
+    cat("Beta (LATE):  ", round(fit$coef[1], 4), "\n")
+    cat("p-value:      ", round(fit$pv[1],  4), "\n")
+  }, error = function(e) {
+    cat("Model failed:", conditionMessage(e), "\n")
+  })
+}
+
+# ── 12c) Summary table ────────────────────────────────────────
+cat("\n=======================================================\n")
+cat("SUMMARY: Penalty Tax by ELO Tier\n")
+cat("=======================================================\n")
+
+results_def <- tibble(
+  tier     = c("All matches", tiers),
+  beta     = c(
+    rdd_base_def$coef[1],
+    sapply(tiers, function(t)
+      if (!is.null(rdd_tier_def[[t]])) rdd_tier_def[[t]]$coef[1] else NA_real_)
+  ),
+  pval     = c(
+    rdd_base_def$pv[1],
+    sapply(tiers, function(t)
+      if (!is.null(rdd_tier_def[[t]])) rdd_tier_def[[t]]$pv[1] else NA_real_)
+  ),
+  bw       = c(
+    rdd_base_def$bws[1,1],
+    sapply(tiers, function(t)
+      if (!is.null(rdd_tier_def[[t]])) rdd_tier_def[[t]]$bws[1,1] else NA_real_)
+  ),
+  n_inside = c(
+    rdd_base_def$N_h[1],
+    sapply(tiers, function(t)
+      if (!is.null(rdd_tier_def[[t]])) rdd_tier_def[[t]]$N_h[1] else NA_real_)
+  ),
+  n_outside = c(
+    rdd_base_def$N_h[2],
+    sapply(tiers, function(t)
+      if (!is.null(rdd_tier_def[[t]])) rdd_tier_def[[t]]$N_h[2] else NA_real_)
+  )
+) %>%
+  mutate(
+    significant = case_when(
+      pval < 0.01 ~ "***",
+      pval < 0.05 ~ "**",
+      pval < 0.10 ~ "*",
+      TRUE        ~ ""
+    ),
+    across(c(beta, pval, bw), ~ round(.x, 3))
+  )
+
+print(results_def)
+
+# ── 12d) Binned scatter — the money shot ─────────────────────
+BIN_WIDTH <- 1.5
+
+binned_def <- rdd_data_def %>%
+  mutate(
+    dist_bin = floor(dist_signed_def / BIN_WIDTH) * BIN_WIDTH + BIN_WIDTH / 2
+  ) %>%
+  group_by(dist_bin) %>%
+  summarise(
+    tackle_rate = mean(is_tackle, na.rm = TRUE),
+    se          = sd(is_tackle, na.rm = TRUE) / sqrt(n()),
+    n           = n(),
+    inside      = first(dist_bin) < 0,
+    .groups = "drop"
+  ) %>%
+  filter(n >= 5)
+
+ggplot(binned_def, aes(x = dist_bin, y = tackle_rate, colour = inside)) +
+  geom_ribbon(aes(ymin = tackle_rate - 1.96 * se,
+                  ymax = tackle_rate + 1.96 * se,
+                  fill  = inside),
+              alpha = 0.15, colour = NA) +
+  geom_point(aes(size = n), alpha = 0.85) +
+  geom_smooth(data = filter(binned_def, !inside),
+              method = "lm", formula = y ~ poly(x, 2),
+              se = FALSE, linewidth = 1.1) +
+  geom_smooth(data = filter(binned_def, inside),
+              method = "lm", formula = y ~ poly(x, 2),
+              se = FALSE, linewidth = 1.1) +
+  geom_vline(xintercept = 0, colour = "black",
+             linewidth = 1.2, linetype = "dashed") +
+  annotate("text", x = 0.5,
+           y = max(binned_def$tackle_rate) * 0.97,
+           label = "Own penalty\nbox line",
+           hjust = 0, size = 3.5,
+           colour = "black", fontface = "italic") +
+  scale_colour_manual(values = c("FALSE" = "#2166ac","TRUE" = "#d6604d"),
+                      labels = c("Outside box","Inside box"), name = "") +
+  scale_fill_manual(  values = c("FALSE" = "#2166ac","TRUE" = "#d6604d"),
+                      guide  = "none") +
+  scale_size_continuous(range = c(2, 6), name = "Events\nper bin") +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    title    = "RDD: Penalty Tax on Defensive Tackling",
+    subtitle = "Bayer Leverkusen 2023/24 | P(Tackle) drops sharply inside own box",
+    x        = "Signed Distance to Own Box Line (m)\n← Inside box  |  Outside box →",
+    y        = "Probability of Tackle Attempt"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title       = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle    = element_text(hjust = 0.5, colour = "grey40"),
+    legend.position  = "top",
+    panel.grid.minor = element_blank()
+  )
+
+ggsave("fig4_rdd_tackle_binned_scatter.png",
+       width = 10, height = 6.5, dpi = 300)
+```
+
+```{r}
+# ============================================================
+# CHUNK 13: Robustness checks + coefficient visualisation
+# ============================================================
+
+library(rdrobust)
+library(ggplot2)
+library(dplyr)
+
+# ── 13a) Mass points correction ───────────────────────────────
+cat("=======================================================\n")
+cat("ROBUSTNESS: Mass points adjustment — All matches\n")
+cat("=======================================================\n")
+
+rdd_robust <- rdrobust(
+  y           = as.numeric(rdd_data_def$is_tackle),
+  x           = rdd_data_def$dist_signed_def,
+  c           = 0,
+  kernel      = "triangular",
+  bwselect    = "mserd",
+  masspoints  = "adjust"   # corrects for discrete running variable
+)
+summary(rdd_robust)
+
+# ── 13b) Mass points correction by ELO tier ───────────────────
+cat("\n=== Mass-adjusted models by tier ===\n")
+rdd_robust_tiers <- list()
+
+for (tier in c("Top opponent", "Mid opponent", "Weak opponent")) {
+  tier_data <- rdd_data_def %>% filter(elo_tier == tier)
+  if (nrow(tier_data) < 40) next
+  tryCatch({
+    fit <- rdrobust(
+      y          = as.numeric(tier_data$is_tackle),
+      x          = tier_data$dist_signed_def,
+      c          = 0,
+      kernel     = "triangular",
+      bwselect   = "mserd",
+      masspoints = "adjust"
+    )
+    rdd_robust_tiers[[tier]] <- fit
+    cat(sprintf("\n%s: beta = %.3f, p = %.3f, h = %.2fm\n",
+                tier,
+                fit$coef[1],
+                fit$pv[1],
+                fit$bws[1,1]))
+  }, error = function(e) cat(tier, "failed:", conditionMessage(e), "\n"))
+}
+
+# ── 13c) Alternative bandwidth check ─────────────────────────
+# Test sensitivity to bandwidth choice (h = 5m and h = 8m)
+cat("\n=== Bandwidth sensitivity — Top opponent only ===\n")
+top_data <- rdd_data_def %>% filter(elo_tier == "Top opponent")
+
+for (h in c(3, 5, 8, 10)) {
+  tryCatch({
+    fit <- rdrobust(
+      y      = as.numeric(top_data$is_tackle),
+      x      = top_data$dist_signed_def,
+      c      = 0,
+      h      = h,
+      kernel = "triangular"
+    )
+    cat(sprintf("h = %2dm | beta = %6.3f | p = %.3f | N: %d/%d\n",
+                h, fit$coef[1], fit$pv[1],
+                fit$N_h[1], fit$N_h[2]))
+  }, error = function(e) cat("h =", h, "failed\n"))
+}
+
+# ── 13d) Coefficient plot — ELO gradient (main result figure) ─
+coef_data <- tibble(
+  tier  = factor(
+    c("Top opponent", "Mid opponent", "Weak opponent"),
+    levels = c("Top opponent", "Mid opponent", "Weak opponent")
+  ),
+  beta  = c(
+    rdd_tier_def[["Top opponent"]]$coef[1],
+    rdd_tier_def[["Mid opponent"]]$coef[1],
+    rdd_tier_def[["Weak opponent"]]$coef[1]
+  ),
+  ci_lo = c(
+    rdd_tier_def[["Top opponent"]]$ci[1, 1],
+    rdd_tier_def[["Mid opponent"]]$ci[1, 1],
+    rdd_tier_def[["Weak opponent"]]$ci[1, 1]
+  ),
+  ci_hi = c(
+    rdd_tier_def[["Top opponent"]]$ci[1, 2],
+    rdd_tier_def[["Mid opponent"]]$ci[1, 2],
+    rdd_tier_def[["Weak opponent"]]$ci[1, 2]
+  ),
+  pval  = c(
+    rdd_tier_def[["Top opponent"]]$pv[1],
+    rdd_tier_def[["Mid opponent"]]$pv[1],
+    rdd_tier_def[["Weak opponent"]]$pv[1]
+  ),
+  elo_approx = c(1750, 1580, 1430)  # approximate midpoints of ELO tiers
+)
+
+fig5 <- ggplot(coef_data,
+               aes(x = tier, y = beta, colour = tier)) +
+
+  # Zero reference line
+  geom_hline(yintercept = 0, linetype = "dashed",
+             colour = "grey50", linewidth = 0.8) +
+
+  # Confidence intervals
+  geom_errorbar(aes(ymin = ci_lo, ymax = ci_hi),
+                width = 0.15, linewidth = 1.1) +
+
+  # Point estimates
+  geom_point(size = 5) +
+
+  # Significance label
+  geom_text(
+    aes(label = ifelse(pval < 0.01, "p < 0.01 ***",
+                ifelse(pval < 0.05, "p < 0.05 **",
+                ifelse(pval < 0.10, "p < 0.10 *", "n.s.")))),
+    vjust = -1.2, size = 3.8, fontface = "italic"
+  ) +
+
+  scale_colour_manual(
+    values = c(
+      "Top opponent"  = "#d6604d",
+      "Mid opponent"  = "#f4a582",
+      "Weak opponent" = "#2166ac"
+    ),
+    guide = "none"
+  ) +
+
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 1),
+    limits = c(-1.6, 0.8)
+  ) +
+
+  labs(
+    title    = "The Penalty Tax: RDD Estimates by Opponent Quality",
+    subtitle = paste0(
+      "LATE = drop in P(Tackle) at own box boundary | ",
+      "Bayer Leverkusen 2023/24\n",
+      "Against elite opponents, defenders are ~118pp less likely to tackle inside the box"
+    ),
+    x = "Opponent Quality (ELO Tier)",
+    y = "RDD Estimate: β (Change in P(Tackle) at Box Line)"
+  ) +
+
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title       = element_text(face = "bold", hjust = 0.5, size = 14),
+    plot.subtitle    = element_text(hjust = 0.5, colour = "grey40", size = 10),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.text.x      = element_text(face = "bold", size = 12)
+  )
+
+print(fig5)
+ggsave("fig5_rdd_coefficients_by_elo.png",
+       plot = fig5, width = 9, height = 6, dpi = 300)
+```
+
+```{r}
+# ============================================================
+# RDD Binned Scatter — faceted by ELO tier (FIXED)
+# ============================================================
+
+BIN_WIDTH <- 2.0
+
+binned_tier <- rdd_data_def %>%
+  filter(!is.na(elo_tier), elo_tier != "Unknown") %>%
+  mutate(
+    dist_bin = floor(dist_signed_def / BIN_WIDTH) * BIN_WIDTH + BIN_WIDTH / 2
+  ) %>%
+  group_by(elo_tier, dist_bin) %>%
+  summarise(
+    tackle_rate = mean(is_tackle, na.rm = TRUE),
+    se          = sd(is_tackle,   na.rm = TRUE) / sqrt(n()),
+    n           = n(),
+    inside      = first(dist_bin) < 0,
+    .groups     = "drop"
+  ) %>%
+  filter(n >= 3)
+
+# ELO tier labels with sample sizes
+tier_labels <- rdd_data_def %>%
+  filter(!is.na(elo_tier), elo_tier != "Unknown") %>%
+  count(elo_tier) %>%
+  mutate(label = paste0(elo_tier, "\n(n = ", n, " duels)"))
+
+binned_tier <- binned_tier %>%
+  left_join(tier_labels %>% select(elo_tier, label), by = "elo_tier") %>%
+  mutate(label = factor(label, levels = tier_labels$label))
+
+tier_colours <- c(
+  "Top opponent"  = "#d6604d",
+  "Mid opponent"  = "#f4a100",
+  "Weak opponent" = "#2166ac"
+)
+
+# ── Beta annotation data frame (fixed) ───────────────────────
+beta_annotations <- tibble(
+  elo_tier    = c("Top opponent", "Mid opponent", "Weak opponent"),
+  dist_bin    = c(-11, -11, -11),
+  tackle_rate = c(0.12, 0.12, 0.12),
+  annotation  = c(
+    "β = -1.18***\np = 0.003",
+    "β = -0.09\np = 0.896",
+    "β = +0.25\np = 0.766"
+  )
+) %>%
+  left_join(tier_labels %>% select(elo_tier, label), by = "elo_tier") %>%
+  mutate(label = factor(label, levels = tier_labels$label))
+
+fig_rdd_tiers <- ggplot(binned_tier,
+                        aes(x = dist_bin, y = tackle_rate,
+                            colour = elo_tier, fill = elo_tier)) +
+
+  geom_ribbon(aes(ymin = tackle_rate - 1.96 * se,
+                  ymax = tackle_rate + 1.96 * se),
+              alpha = 0.15, colour = NA) +
+
+  geom_point(aes(size = n), alpha = 0.9) +
+
+  geom_smooth(data = ~ filter(.x, !inside),
+              method = "lm", formula = y ~ poly(x, 2),
+              se = FALSE, linewidth = 1.2) +
+  geom_smooth(data = ~ filter(.x, inside),
+              method = "lm", formula = y ~ poly(x, 2),
+              se = FALSE, linewidth = 1.2) +
+
+  geom_vline(xintercept = 0, colour = "black",
+             linewidth = 1.1, linetype = "dashed") +
+
+  annotate("text", x = 0.5, y = 0.97,
+           label = "Box line", hjust = 0,
+           size = 3.2, fontface = "italic", colour = "grey30") +
+
+  # ── FIXED: clean geom_text with pre-built data frame ─────
+  geom_text(
+    data    = beta_annotations,
+    mapping = aes(x = dist_bin, y = tackle_rate, label = annotation),
+    colour  = "grey20", size = 3.5,
+    fontface = "italic", lineheight = 0.9,
+    inherit.aes = FALSE
+  ) +
+
+  scale_colour_manual(values = tier_colours, guide = "none") +
+  scale_fill_manual(  values = tier_colours, guide = "none") +
+  scale_size_continuous(range = c(2, 6), name = "Events\nper bin") +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 1),
+    limits = c(0, 1.05)
+  ) +
+
+  facet_wrap(~ label, ncol = 3) +
+
+  labs(
+    title    = "The Penalty Tax: RDD by Opponent Quality",
+    subtitle = paste0(
+      "P(Tackle) at Leverkusen's own box boundary | ",
+      "Bayer Leverkusen 2023/24 Bundesliga\n",
+      "Dashed line = penalty box threshold | ",
+      "Bins = 2m | Shaded = 95% CI"
+    ),
+    x = "Signed Distance to Own Box Line (m)\n← Inside box  |  Outside box →",
+    y = "Probability of Tackle Attempt"
+  ) +
+
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title       = element_text(face = "bold", hjust = 0.5, size = 15),
+    plot.subtitle    = element_text(hjust = 0.5, colour = "grey40", size = 10),
+    strip.text       = element_text(face = "bold", size = 12),
+    strip.background = element_rect(fill = "grey92", colour = NA),
+    legend.position  = "right",
+    panel.grid.minor = element_blank()
+  )
+
+print(fig_rdd_tiers)
+ggsave("fig6_rdd_by_elo_tier.png",
+       plot = fig_rdd_tiers, width = 15, height = 6, dpi = 300)
+```
+
+```{r}
+# ============================================================
+# FIXED rdplot: linear fit + more bins + tight bandwidth
+# ============================================================
+
+library(rdrobust)
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+
+# Helper to extract rdplot data and build ggplot manually
+# This gives us full control over appearance
+make_rdplot_gg <- function(data, tier_name, colour,
+                            bw = 15, nbins_each = 12) {
+
+  y <- as.numeric(data$is_tackle)
+  x <- data$dist_signed_def
+
+  # Generate rdplot with controlled parameters
+  rp <- rdplot(
+    y        = y,
+    x        = x,
+    c        = 0,
+    p        = 1,          # LINEAR polynomial — no overfitting
+    nbins    = c(nbins_each, nbins_each),  # equal bins each side
+    x.lim    = c(-bw, bw), # restrict to relevant window
+    hide     = TRUE        # don't auto-print, we'll build ggplot
+  )
+
+  # Extract binned means
+  bins_df <- rp$vars_bins %>%
+    as.data.frame() %>%
+    rename(x_mid = rdplot_mean_x, y_mean = rdplot_mean_y) %>%
+    mutate(side = ifelse(x_mid < 0, "Inside box", "Outside box"))
+
+  # Extract fitted lines
+  lines_df <- rp$vars_poly %>%
+    as.data.frame() %>%
+    rename(x_fit = rdplot_x, y_fit = rdplot_y)
+
+  lines_left  <- lines_df %>% filter(x_fit <= 0)
+  lines_right <- lines_df %>% filter(x_fit >= 0)
+
+  # Get beta and p-value from rdrobust for annotation
+  fit <- tryCatch(
+    rdrobust(y = y, x = x, c = 0,
+             kernel = "triangular", bwselect = "mserd"),
+    error = function(e) NULL
+  )
+
+  beta_label <- if (!is.null(fit)) {
+    p <- fit$pv[1]
+    stars <- ifelse(p < 0.01, "***", ifelse(p < 0.05, "**",
+                    ifelse(p < 0.10, "*", "n.s.")))
+    sprintf("β = %.2f%s\np = %.3f", fit$coef[1], stars, p)
+  } else { "" }
+
+  # Build ggplot
+  ggplot() +
+
+    # Binned means
+    geom_point(data = bins_df,
+               aes(x = x_mid, y = y_mean),
+               colour = colour, size = 3, alpha = 0.85) +
+
+    # Linear fit — left side (inside box)
+    geom_line(data = lines_left,
+              aes(x = x_fit, y = y_fit),
+              colour = colour, linewidth = 1.3) +
+
+    # Linear fit — right side (outside box)
+    geom_line(data = lines_right,
+              aes(x = x_fit, y = y_fit),
+              colour = colour, linewidth = 1.3) +
+
+    # RDD cutoff
+    geom_vline(xintercept = 0, colour = "black",
+               linewidth = 1.0, linetype = "solid") +
+
+    # Beta annotation
+    annotate("text",
+             x = -bw * 0.85, y = 0.10,
+             label = beta_label,
+             hjust = 0, size = 4,
+             colour = "grey20", fontface = "italic",
+             lineheight = 0.9) +
+
+    # Axis labels at cutoff
+    annotate("text", x = -0.5, y = 1.02,
+             label = "Inside →", hjust = 1,
+             size = 3, colour = "grey50") +
+    annotate("text", x =  0.5, y = 1.02,
+             label = "← Outside", hjust = 0,
+             size = 3, colour = "grey50") +
+
+    scale_y_continuous(
+      labels = scales::percent_format(accuracy = 1),
+      limits = c(0, 1.08)
+    ) +
+    scale_x_continuous(limits = c(-bw, bw)) +
+
+    labs(
+      title    = tier_name,
+      x        = "Distance to box line (m)",
+      y        = "P(Tackle)"
+    ) +
+
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title       = element_text(face = "bold",
+                                      hjust = 0.5,
+                                      colour = colour,
+                                      size = 13),
+      panel.grid.minor = element_blank(),
+      panel.border     = element_rect(colour = "grey85",
+                                      fill = NA)
+    )
+}
+
+# ── Build one plot per tier ───────────────────────────────────
+p_top  <- make_rdplot_gg(
+  rdd_data_def %>% filter(elo_tier == "Top opponent"),
+  "Top opponent",   "#d6604d"
+)
+
+p_mid  <- make_rdplot_gg(
+  rdd_data_def %>% filter(elo_tier == "Mid opponent"),
+  "Mid opponent",   "#f4a100"
+)
+
+p_weak <- make_rdplot_gg(
+  rdd_data_def %>% filter(elo_tier == "Weak opponent"),
+  "Weak opponent",  "#2166ac"
+)
+
+# ── Compose final figure ──────────────────────────────────────
+fig_rdd_clean <- p_top + p_mid + p_weak +
+  plot_layout(ncol = 3) +
+  plot_annotation(
+    title    = "The Penalty Tax: RDD by Opponent Quality",
+    subtitle = paste0(
+      "P(Tackle) at Leverkusen's own box boundary | ",
+      "Bayer Leverkusen 2023/24 Bundesliga\n",
+      "Linear fit each side of cutoff | ",
+      "±15m window | Equal-sized bins"
+    ),
+    theme = theme(
+      plot.title    = element_text(face = "bold",
+                                   hjust = 0.5, size = 15),
+      plot.subtitle = element_text(hjust = 0.5,
+                                   colour = "grey40", size = 10)
+    )
+  )
+
+print(fig_rdd_clean)
+ggsave("fig6_rdd_clean.png",
+       plot = fig_rdd_clean,
+       width = 15, height = 6, dpi = 300)
+```
+
+
+```{r}
+# ============================================================
+# CHUNK 14: Reconstruct score state + build DiD dataset
+# ============================================================
+
+library(dplyr)
+library(ggplot2)
+library(ggsoccer)
+
+# ── 14a) Extract goal events from full season ─────────────────
+# StatsBomb: goals are shots with outcome "Goal"
+goals <- events %>%
+  filter(
+    type.name == "Shot",
+    shot.outcome.name == "Goal",
+    !is.na(minute)
+  ) %>%
+  select(
+    match_id, period, minute, second,
+    team.name, index
+  ) %>%
+  arrange(match_id, period, minute, second)
+
+cat("Total goals in dataset:", nrow(goals), "\n")
+cat("Sample:\n")
+print(head(goals, 10))
+
+# ── 14b) Build running score per match ────────────────────────
+# For each match, compute Leverkusen's goal difference
+# at the time of each event
+
+score_timeline <- goals %>%
+  group_by(match_id) %>%
+  mutate(
+    lev_goal  = team.name == "Bayer Leverkusen",
+    opp_goal  = team.name != "Bayer Leverkusen",
+    lev_score_after = cumsum(lev_goal),
+    opp_score_after = cumsum(opp_goal),
+    goal_diff_after = lev_score_after - opp_score_after,
+    # Approximate time in minutes
+    time_mins = minute + second / 60
+  ) %>%
+  ungroup() %>%
+  select(match_id, index, time_mins, minute,
+         lev_score_after, opp_score_after, goal_diff_after)
+
+cat("\n=== Score state distribution at goal moments ===\n")
+print(table(score_timeline$goal_diff_after))
+
+# ── 14c) Join score state to pressure events ──────────────────
+# Strategy: for each press event, find the most recent goal
+# that occurred BEFORE it in the same match
+# If no goals yet, score is 0-0
+
+press_with_score <- press_clean %>%
+  select(id, match_id, minute, second,
+         location.x, location.y,
+         counterpress_flag, elo_tier,
+         match_date, opponent) %>%
+  mutate(time_mins = minute + second / 60)
+
+# For each press event, get the score state at that moment
+# Using a rolling join approach
+
+get_score_at_time <- function(match_events, match_goals) {
+  match_events %>%
+    rowwise() %>%
+    mutate(
+      # Goals scored by each team before this event
+      lev_goals = sum(
+        match_goals$lev_goal[match_goals$time_mins < time_mins],
+        na.rm = TRUE
+      ),
+      opp_goals = sum(
+        match_goals$opp_goal[match_goals$time_mins < time_mins],
+        na.rm = TRUE
+      ),
+      goal_diff = lev_goals - opp_goals
+    ) %>%
+    ungroup()
+}
+
+# Apply per match
+cat("\nJoining score state to press events...\n")
+
+goals_per_match <- goals %>%
+  mutate(
+    lev_goal = team.name == "Bayer Leverkusen",
+    opp_goal = team.name != "Bayer Leverkusen",
+    time_mins = minute + second / 60
+  )
+
+press_scored <- press_with_score %>%
+  group_by(match_id) %>%
+  group_modify(~ {
+    match_goals <- goals_per_match %>%
+      filter(match_id == .y$match_id)
+
+    if (nrow(match_goals) == 0) {
+      # No goals in match — score always 0-0
+      .x %>% mutate(lev_goals = 0, opp_goals = 0, goal_diff = 0)
+    } else {
+      .x %>% rowwise() %>%
+        mutate(
+          lev_goals = sum(
+            match_goals$lev_goal[match_goals$time_mins < time_mins],
+            na.rm = TRUE
+          ),
+          opp_goals = sum(
+            match_goals$opp_goal[match_goals$time_mins < time_mins],
+            na.rm = TRUE
+          ),
+          goal_diff = lev_goals - opp_goals
+        ) %>%
+        ungroup()
+    }
+  }) %>%
+  ungroup()
+
+cat("Press events with score state:", nrow(press_scored), "\n")
+
+# ── 14d) Build DiD variables ──────────────────────────────────
+LATE_THRESHOLD <- 70  # minutes
+
+press_did <- press_scored %>%
+  mutate(
+    # Score state
+    score_state = case_when(
+      goal_diff > 0  ~ "Winning",
+      goal_diff == 0 ~ "Drawing",
+      goal_diff < 0  ~ "Losing"
+    ),
+    is_losing = goal_diff < 0,
+
+    # Time period
+    is_late   = minute > LATE_THRESHOLD,
+
+    # DiD treatment indicator
+    # Treatment = losing AND late (comeback mode)
+    comeback_mode = is_losing & is_late,
+
+    # DiD group labels for plotting
+    did_group = case_when(
+      is_losing  & is_late  ~ "Losing — Late (>70')\n[Treatment]",
+      is_losing  & !is_late ~ "Losing — Early (≤70')\n[Control]",
+      !is_losing & is_late  ~ "Not Losing — Late (>70')\n[Control]",
+      TRUE                  ~ "Not Losing — Early (≤70')\n[Control]"
+    )
+  )
+
+# ── 14e) Summary table ────────────────────────────────────────
+cat("\n=== DiD Cell Counts ===\n")
+did_summary <- press_did %>%
+  group_by(is_late, is_losing) %>%
+  summarise(
+    n_presses        = n(),
+    mean_location_x  = round(mean(location.x, na.rm = TRUE), 2),
+    sd_location_x    = round(sd(location.x,   na.rm = TRUE), 2),
+    cp_rate          = round(mean(counterpress_flag) * 100, 1),
+    .groups          = "drop"
+  ) %>%
+  mutate(
+    period    = ifelse(is_late,   "Late (>70')", "Early (≤70')"),
+    score     = ifelse(is_losing, "Losing",      "Not Losing")
+  ) %>%
+  select(score, period, n_presses, mean_location_x,
+         sd_location_x, cp_rate)
+
+print(did_summary)
+
+# ── 14f) Naive DiD estimate (before regression) ───────────────
+cat("\n=== Naive DiD Calculation ===\n")
+
+cell_means <- press_did %>%
+  group_by(is_late, is_losing) %>%
+  summarise(mean_x = mean(location.x, na.rm = TRUE),
+            .groups = "drop")
+
+# Extract cells
+early_losing     <- cell_means %>%
+  filter(!is_late,  is_losing)  %>% pull(mean_x)
+late_losing      <- cell_means %>%
+  filter( is_late,  is_losing)  %>% pull(mean_x)
+early_notlosing  <- cell_means %>%
+  filter(!is_late, !is_losing)  %>% pull(mean_x)
+late_notlosing   <- cell_means %>%
+  filter( is_late, !is_losing)  %>% pull(mean_x)
+
+diff_losing     <- late_losing    - early_losing
+diff_notlosing  <- late_notlosing - early_notlosing
+did_estimate    <- diff_losing    - diff_notlosing
+
+cat(sprintf(
+  "Early Losing:       %.2f m\n
+Late Losing:        %.2f m\n
+Δ Losing:           %.2f m\n\n
+Early Not Losing:   %.2f m\n
+Late Not Losing:    %.2f m\n
+Δ Not Losing:       %.2f m\n\n
+DiD Estimate:       %.2f m  ← the comeback shift\n",
+  early_losing, late_losing, diff_losing,
+  early_notlosing, late_notlosing, diff_notlosing,
+  did_estimate
+))
+```
+
+
+```{r}
+# ============================================================
+# CHUNK 15: Formal DiD regression + ELO interaction
+# ============================================================
+
+library(dplyr)
+library(ggplot2)
+library(broom)
+
+# ── 15a) Baseline DiD regression ─────────────────────────────
+# Y = location.x (press height)
+# Model: Y = α + β1·IsLate + β2·IsLosing + β3·(IsLate×IsLosing) + ε
+# β3 is the DiD estimator — the comeback shift
+
+model_base <- lm(
+  location.x ~ is_late + is_losing + is_late:is_losing,
+  data = press_did
+)
+
+cat("=======================================================\n")
+cat("MODEL 1: Baseline DiD — Press Height\n")
+cat("=======================================================\n")
+summary(model_base)
+
+# Clean coefficient table
+tidy(model_base, conf.int = TRUE) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3))) %>%
+  print()
+
+# ── 15b) DiD with ELO interaction ────────────────────────────
+# Does the comeback shift intensify against stronger opponents?
+# Y = α + β1·IsLate + β2·IsLosing + β3·(IsLate×IsLosing)
+#       + β4·ELOtier + β5·(IsLate×IsLosing×ELOtier) + ε
+
+press_did_elo <- press_did %>%
+  filter(!is.na(elo_tier), elo_tier != "Unknown") %>%
+  mutate(
+    elo_tier = relevel(factor(elo_tier),
+                       ref = "Weak opponent")  # weak = baseline
+  )
+
+model_elo <- lm(
+  location.x ~ is_late * is_losing * elo_tier,
+  data = press_did_elo
+)
+
+cat("\n=======================================================\n")
+cat("MODEL 2: DiD × ELO Tier Interaction\n")
+cat("=======================================================\n")
+summary(model_elo)
+
+# ── 15c) Predicted means per cell × tier ─────────────────────
+cat("\n=== Predicted press height by DiD cell × ELO tier ===\n")
+pred_grid <- expand.grid(
+  is_late   = c(FALSE, TRUE),
+  is_losing = c(FALSE, TRUE),
+  elo_tier  = c("Top opponent", "Mid opponent", "Weak opponent")
+) %>%
+  mutate(pred_x = predict(model_elo, newdata = .))
+
+pred_grid %>%
+  mutate(
+    period = ifelse(is_late,   "Late >70'", "Early ≤70'"),
+    score  = ifelse(is_losing, "Losing",    "Not Losing")
+  ) %>%
+  select(elo_tier, score, period, pred_x) %>%
+  tidyr::pivot_wider(names_from  = period,
+                     values_from = pred_x) %>%
+  mutate(
+    did_shift = round(`Late >70'` - `Early ≤70'`, 2),
+    across(where(is.numeric), ~ round(.x, 2))
+  ) %>%
+  arrange(elo_tier, score) %>%
+  print()
+
+# ── 15d) DiD estimate per ELO tier (manual) ──────────────────
+cat("\n=== DiD Estimate by ELO Tier ===\n")
+did_by_tier <- press_did_elo %>%
+  group_by(elo_tier, is_late, is_losing) %>%
+  summarise(
+    mean_x = mean(location.x, na.rm = TRUE),
+    n      = n(),
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_wider(
+    names_from  = c(is_late, is_losing),
+    values_from = c(mean_x, n),
+    names_sep   = "_"
+  ) %>%
+  mutate(
+    # DiD = (Late,Losing - Early,Losing) - (Late,NotLosing - Early,NotLosing)
+    diff_losing    = mean_x_TRUE_TRUE  - mean_x_FALSE_TRUE,
+    diff_notlosing = mean_x_TRUE_FALSE - mean_x_FALSE_FALSE,
+    did_estimate   = round(diff_losing - diff_notlosing, 2),
+    diff_losing    = round(diff_losing, 2),
+    diff_notlosing = round(diff_notlosing, 2)
+  ) %>%
+  select(elo_tier, diff_losing, diff_notlosing, did_estimate,
+         n_TRUE_TRUE, n_FALSE_TRUE)
+
+colnames(did_by_tier) <- c(
+  "ELO Tier", "Δ Losing", "Δ Not Losing",
+  "DiD Estimate (m)", "n (Late+Losing)", "n (Early+Losing)"
+)
+print(did_by_tier)
+
+# ── 15e) Visualization: parallel trends + DiD shift ──────────
+plot_did <- press_did_elo %>%
+  group_by(elo_tier, is_late, is_losing) %>%
+  summarise(
+    mean_x = mean(location.x, na.rm = TRUE),
+    se_x   = sd(location.x, na.rm = TRUE) / sqrt(n()),
+    n      = n(),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    period    = ifelse(is_late,   "Late\n(>70')", "Early\n(≤70')"),
+    score     = ifelse(is_losing, "Losing",       "Not Losing"),
+    period_n  = ifelse(is_late, 1, 0)
+  )
+
+tier_colours <- c(
+  "Top opponent"  = "#d6604d",
+  "Mid opponent"  = "#f4a100",
+  "Weak opponent" = "#2166ac"
+)
+
+fig_did <- ggplot(
+  plot_did,
+  aes(x      = period_n,
+      y      = mean_x,
+      colour = score,
+      group  = score)
+) +
+
+  # Connecting lines
+  geom_line(linewidth = 1.2, alpha = 0.8) +
+
+  # Points with error bars
+  geom_point(aes(size = n), alpha = 0.9) +
+  geom_errorbar(
+    aes(ymin = mean_x - 1.96 * se_x,
+        ymax = mean_x + 1.96 * se_x),
+    width = 0.05, linewidth = 0.8
+  ) +
+
+  # DiD annotation arrow — only on Late side
+  geom_segment(
+    data = plot_did %>%
+      filter(is_late) %>%
+      tidyr::pivot_wider(
+        id_cols     = c(elo_tier),
+        names_from  = is_losing,
+        values_from = mean_x
+      ) %>%
+      rename(losing = `TRUE`, notlosing = `FALSE`),
+    aes(x = 1.08, xend = 1.08,
+        y = notlosing, yend = losing),
+    colour    = "grey30",
+    linewidth = 0.8,
+    arrow     = arrow(length = unit(0.25, "cm"),
+                      ends = "both", type = "closed"),
+    inherit.aes = FALSE
+  ) +
+
+  geom_text(
+    data = plot_did %>%
+      filter(is_late) %>%
+      tidyr::pivot_wider(
+        id_cols     = c(elo_tier),
+        names_from  = is_losing,
+        values_from = mean_x
+      ) %>%
+      rename(losing = `TRUE`, notlosing = `FALSE`) %>%
+      left_join(
+        did_by_tier %>%
+          rename(elo_tier = `ELO Tier`,
+                 did_est  = `DiD Estimate (m)`),
+        by = "elo_tier"
+      ) %>%
+      mutate(
+        mid_y = (losing + notlosing) / 2,
+        label = paste0("DiD = +", did_est, "m")
+      ),
+    aes(x = 1.12, y = mid_y, label = label),
+    hjust       = 0, size = 3.5,
+    colour      = "grey20",
+    fontface    = "italic",
+    inherit.aes = FALSE
+  ) +
+
+  scale_colour_manual(
+    values = c("Losing"     = "#d6604d",
+               "Not Losing" = "#2166ac"),
+    name   = "Score state"
+  ) +
+  scale_size_continuous(range = c(3, 7), name = "n events") +
+  scale_x_continuous(
+    breaks = c(0, 1),
+    labels = c("Early (≤70')", "Late (>70')"),
+    expand = expansion(add = c(0.1, 0.3))
+  ) +
+
+  facet_wrap(~ elo_tier, ncol = 3) +
+
+  labs(
+    title    = "The Comeback Shift: DiD by Opponent Quality",
+    subtitle = paste0(
+      "Average press height (location.x) by score state × time period\n",
+      "Bayer Leverkusen 2023/24 | DiD = (Losing Late − Losing Early) ",
+      "− (Not Losing Late − Not Losing Early)"
+    ),
+    x = NULL,
+    y = "Average Press Height (m from own goal)"
+  ) +
+
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title       = element_text(face = "bold",
+                                    hjust = 0.5, size = 15),
+    plot.subtitle    = element_text(hjust = 0.5,
+                                    colour = "grey40", size = 10),
+    strip.text       = element_text(face = "bold", size = 12),
+    strip.background = element_rect(fill = "grey92", colour = NA),
+    legend.position  = "top",
+    panel.grid.minor = element_blank()
+  )
+
+print(fig_did)
+ggsave("fig7_did_comeback_shift.png",
+       plot   = fig_did,
+       width  = 14, height = 6, dpi = 300)
+
+```
+
+
+```{r}
+# ============================================================
+# DiD VISUALIZATION SUITE — 4 complementary figures
+# ============================================================
+
+library(ggplot2)
+library(dplyr)
+library(ggsoccer)
+library(patchwork)
+library(ggridges)   # install.packages("ggridges") if needed
+
+# ── Shared theme ─────────────────────────────────────────────
+theme_paper <- function() {
+  theme_minimal(base_size = 12) +
+    theme(
+      plot.title       = element_text(face = "bold", hjust = 0.5, size = 14),
+      plot.subtitle    = element_text(hjust = 0.5, colour = "grey40", size = 10),
+      panel.grid.minor = element_blank(),
+      plot.background  = element_rect(fill = "white", color = NA),
+      panel.background = element_rect(fill = "white", color = NA),
+      legend.position  = "top"
+    )
+}
+
+# ── Colour palette ────────────────────────────────────────────
+col_losing    <- "#d6604d"
+col_notlosing <- "#2166ac"
+col_late      <- "#1a1a2e"
+col_early     <- "#9e9e9e"
+
+# ============================================================
+# FIGURE A: Pitch map — press locations in 4 DiD cells
+# Shows WHERE on the pitch the comeback shift happens
+# ============================================================
+
+fig_A <- press_did %>%
+  filter(!is.na(is_late), !is.na(is_losing)) %>%
+  mutate(
+    did_group = case_when(
+      !is_losing & !is_late ~ "Not Losing — Early (≤70')",
+      !is_losing &  is_late ~ "Not Losing — Late (>70')",
+       is_losing & !is_late ~ "Losing — Early (≤70')",
+       is_losing &  is_late ~ "Losing — Late (>70') ★"
+    ),
+    did_group = factor(did_group, levels = c(
+      "Not Losing — Early (≤70')",
+      "Not Losing — Late (>70')",
+      "Losing — Early (≤70')",
+      "Losing — Late (>70') ★"
+    ))
+  ) %>%
+  ggplot() +
+  stat_density_2d(
+    aes(x = location.x, y = location.y,
+        fill = after_stat(ndensity)),
+    geom = "raster", contour = FALSE,
+    n = 150, h = c(15, 15)
+  ) +
+  scale_fill_gradient2(
+    low = "white", mid = "#fdae61", high = "#d73027",
+    midpoint = 0.4,
+    name = "Relative\nDensity", limits = c(0, 1)
+  ) +
+  # Pitch boundary masks
+  annotate("rect", xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=0,   fill="white", color=NA) +
+  annotate("rect", xmin=-Inf, xmax=Inf, ymin=80,   ymax=Inf, fill="white", color=NA) +
+  annotate("rect", xmin=-Inf, xmax=0,   ymin=-Inf, ymax=Inf, fill="white", color=NA) +
+  annotate("rect", xmin=120,  xmax=Inf, ymin=-Inf, ymax=Inf, fill="white", color=NA) +
+  annotate_pitch(dimensions = pitch_statsbomb,
+                 colour = "grey40", fill = NA) +
+  # Vertical line showing mean press height per cell
+  geom_vline(
+    data = press_did %>%
+      filter(!is.na(is_late), !is.na(is_losing)) %>%
+      mutate(did_group = case_when(
+        !is_losing & !is_late ~ "Not Losing — Early (≤70')",
+        !is_losing &  is_late ~ "Not Losing — Late (>70')",
+         is_losing & !is_late ~ "Losing — Early (≤70')",
+         is_losing &  is_late ~ "Losing — Late (>70') ★"
+      ),
+      did_group = factor(did_group, levels = c(
+        "Not Losing — Early (≤70')",
+        "Not Losing — Late (>70')",
+        "Losing — Early (≤70')",
+        "Losing — Late (>70') ★"
+      ))) %>%
+      group_by(did_group) %>%
+      summarise(mean_x = mean(location.x), .groups = "drop"),
+    aes(xintercept = mean_x),
+    colour = col_late, linewidth = 1.0,
+    linetype = "dashed"
+  ) +
+  coord_fixed(xlim = c(-2, 122), ylim = c(-3, 83), expand = FALSE) +
+  facet_wrap(~ did_group, ncol = 4) +
+  labs(
+    title    = "A) Press Location Density Across DiD Cells",
+    subtitle = "Dashed line = mean press height per cell | ★ = Treatment group"
+  ) +
+  theme_pitch() +
+  theme(
+    strip.text       = element_text(face = "bold", size = 9),
+    strip.background = element_rect(fill = "grey92", colour = NA),
+    plot.title       = element_text(face = "bold", hjust = 0.5, size = 13),
+    plot.subtitle    = element_text(hjust = 0.5, colour = "grey40", size = 9),
+    plot.background  = element_rect(fill = "white", color = NA),
+    legend.position  = "right"
+  )
+
+# ============================================================
+# FIGURE B: Ridge plot — distribution of press height
+# Shows the full DISTRIBUTION shift, not just means
+# ============================================================
+
+fig_B <- press_did %>%
+  filter(!is.na(is_late), !is.na(is_losing)) %>%
+  mutate(
+    group_label = case_when(
+      !is_losing & !is_late ~ "Not Losing\nEarly (≤70')",
+      !is_losing &  is_late ~ "Not Losing\nLate (>70')",
+       is_losing & !is_late ~ "Losing\nEarly (≤70')",
+       is_losing &  is_late ~ "Losing\nLate (>70') ★"
+    ),
+    group_label = factor(group_label, levels = c(
+      "Not Losing\nEarly (≤70')",
+      "Not Losing\nLate (>70')",
+      "Losing\nEarly (≤70')",
+      "Losing\nLate (>70') ★"
+    )),
+    is_treatment = is_losing & is_late
+  ) %>%
+  ggplot(aes(x     = location.x,
+             y     = group_label,
+             fill  = is_treatment,
+             colour = is_treatment)) +
+  geom_density_ridges(
+    alpha = 0.65, scale = 1.2,
+    quantile_lines = TRUE, quantiles = 2,  # median line
+    linewidth = 0.6
+  ) +
+  # Vertical reference lines: thirds
+  geom_vline(xintercept = c(40, 80, 102),
+             linetype = "dashed",
+             colour = "grey50", linewidth = 0.5) +
+  annotate("text", x = 20,  y = 0.4, label = "Defensive\nThird",
+           size = 3, colour = "grey50", hjust = 0.5) +
+  annotate("text", x = 60,  y = 0.4, label = "Middle\nThird",
+           size = 3, colour = "grey50", hjust = 0.5) +
+  annotate("text", x = 91,  y = 0.4, label = "Att.\nThird",
+           size = 3, colour = "grey50", hjust = 0.5) +
+  annotate("text", x = 111, y = 0.4, label = "Box",
+           size = 3, colour = "grey50", hjust = 0.5) +
+  scale_fill_manual(
+    values = c("FALSE" = col_notlosing, "TRUE" = col_losing),
+    labels = c("Control groups", "Treatment: Losing Late ★"),
+    name   = ""
+  ) +
+  scale_colour_manual(
+    values = c("FALSE" = col_notlosing, "TRUE" = col_losing),
+    guide  = "none"
+  ) +
+  scale_x_continuous(
+    breaks = c(0, 40, 80, 102, 120),
+    labels = c("0", "40m", "80m", "102m\n(box)", "120m")
+  ) +
+  labs(
+    title    = "B) Distribution of Press Height by DiD Group",
+    subtitle = "Vertical line = median | Treatment group shifts right = higher press",
+    x        = "Press Location (m from own goal line)",
+    y        = NULL
+  ) +
+  theme_paper()
+
+# ============================================================
+# FIGURE C: Minute-by-minute press height
+# Shows the TEMPORAL dynamics of the comeback shift
+# ============================================================
+
+press_timeline <- press_did %>%
+  filter(!is.na(is_losing), minute <= 95) %>%
+  mutate(
+    minute_bin = floor(minute / 5) * 5 + 2.5,  # 5-min bins
+    score_label = ifelse(is_losing, "Losing", "Not Losing")
+  ) %>%
+  group_by(minute_bin, score_label) %>%
+  summarise(
+    mean_x = mean(location.x, na.rm = TRUE),
+    se_x   = sd(location.x, na.rm = TRUE) / sqrt(n()),
+    n      = n(),
+    .groups = "drop"
+  ) %>%
+  filter(n >= 5)
+
+fig_C <- ggplot(press_timeline,
+                aes(x      = minute_bin,
+                    y      = mean_x,
+                    colour = score_label,
+                    fill   = score_label)) +
+
+  # Confidence ribbon
+  geom_ribbon(aes(ymin = mean_x - 1.96 * se_x,
+                  ymax = mean_x + 1.96 * se_x),
+              alpha = 0.15, colour = NA) +
+
+  # Smoothed trend
+  geom_smooth(method = "loess", span = 0.4,
+              se = FALSE, linewidth = 1.4) +
+
+  # Raw bin means
+  geom_point(aes(size = n), alpha = 0.6) +
+
+  # DiD treatment window
+  annotate("rect",
+           xmin = 70, xmax = 95,
+           ymin = -Inf, ymax = Inf,
+           fill = "gold", alpha = 0.08) +
+  annotate("text", x = 82.5, y = 105,
+           label = "Treatment\nwindow",
+           size = 3.2, colour = "grey40",
+           fontface = "italic", hjust = 0.5) +
+
+  # Half time
+  geom_vline(xintercept = 45, colour = "grey60",
+             linetype = "dotted", linewidth = 0.8) +
+  annotate("text", x = 45.5, y = 105,
+           label = "HT", size = 3,
+           colour = "grey50", hjust = 0) +
+
+  # 70' threshold
+  geom_vline(xintercept = 70, colour = "grey40",
+             linetype = "dashed", linewidth = 0.8) +
+  annotate("text", x = 70.5, y = 105,
+           label = "70'", size = 3,
+           colour = "grey40", hjust = 0) +
+
+  scale_colour_manual(
+    values = c("Losing"     = col_losing,
+               "Not Losing" = col_notlosing),
+    name   = "Score state"
+  ) +
+  scale_fill_manual(
+    values = c("Losing"     = col_losing,
+               "Not Losing" = col_notlosing),
+    guide  = "none"
+  ) +
+  scale_size_continuous(range = c(1.5, 4), guide = "none") +
+  scale_x_continuous(breaks = seq(0, 95, 10)) +
+  scale_y_continuous(limits = c(40, 110)) +
+
+  labs(
+    title    = "C) Press Height Trajectory Through the Match",
+    subtitle = "5-minute bins | LOESS smooth | Shaded = treatment window (losing after 70')",
+    x        = "Match Minute",
+    y        = "Mean Press Height (m)"
+  ) +
+  theme_paper()
+
+# ============================================================
+# FIGURE D: DiD coefficient plot with raw cell means
+# The formal econometric summary visual
+# ============================================================
+
+# Cell means with CI
+cell_means_ci <- press_did %>%
+  filter(!is.na(is_late), !is.na(is_losing)) %>%
+  group_by(is_late, is_losing) %>%
+  summarise(
+    mean_x = mean(location.x, na.rm = TRUE),
+    se_x   = sd(location.x, na.rm = TRUE) / sqrt(n()),
+    n      = n(),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    period     = ifelse(is_late, "Late\n(>70')", "Early\n(≤70')"),
+    period_n   = ifelse(is_late, 1, 0),
+    score      = ifelse(is_losing, "Losing", "Not Losing"),
+    ci_lo      = mean_x - 1.96 * se_x,
+    ci_hi      = mean_x + 1.96 * se_x
+  )
+
+# DiD bracket data
+did_bracket <- cell_means_ci %>%
+  filter(is_late) %>%
+  select(is_losing, mean_x, score) %>%
+  tidyr::pivot_wider(names_from = is_losing,
+                     values_from = c(mean_x, score)) %>%
+  mutate(
+    mid_y = (mean_x_TRUE + mean_x_FALSE) / 2,
+    did_label = sprintf("DiD = +%.1fm\n(p = 0.104)", 6.17)
+  )
+
+fig_D <- ggplot(cell_means_ci,
+                aes(x      = period_n,
+                    y      = mean_x,
+                    colour = score,
+                    group  = score)) +
+
+  # Lines connecting periods
+  geom_line(linewidth = 1.4, alpha = 0.9) +
+
+  # Points
+  geom_point(aes(size = n), alpha = 1) +
+
+  # Error bars
+  geom_errorbar(
+    aes(ymin = ci_lo, ymax = ci_hi),
+    width = 0.04, linewidth = 0.9
+  ) +
+
+  # Sample size labels
+  geom_text(
+    aes(label = paste0("n=", scales::comma(n))),
+    vjust = -1.5, size = 3, colour = "grey50"
+  ) +
+
+  # DiD bracket
+  annotate("segment",
+           x = 1.12, xend = 1.12,
+           y = did_bracket$mean_x_FALSE,
+           yend = did_bracket$mean_x_TRUE,
+           colour = "grey20", linewidth = 1.0,
+           arrow = arrow(length = unit(0.2, "cm"),
+                         ends = "both", type = "closed")) +
+  annotate("text",
+           x = 1.17, y = (did_bracket$mean_x_FALSE +
+                          did_bracket$mean_x_TRUE) / 2,
+           label = did_bracket$did_label,
+           hjust = 0, size = 3.8,
+           colour = "grey20", fontface = "bold",
+           lineheight = 0.9) +
+
+  # Counterfactual dashed line
+  geom_segment(
+    data = cell_means_ci %>%
+      filter(!is_late, is_losing) %>%
+      left_join(
+        cell_means_ci %>%
+          filter(!is_late, !is_losing) %>%
+          mutate(slope = (
+            cell_means_ci$mean_x[cell_means_ci$is_late &
+                                  !cell_means_ci$is_losing] -
+            cell_means_ci$mean_x[!cell_means_ci$is_late &
+                                  !cell_means_ci$is_losing]
+          )) %>%
+          select(slope),
+        by = character()
+      ) %>%
+      mutate(
+        x1 = 0, y1 = mean_x,
+        x2 = 1, y2 = mean_x + slope
+      ),
+    aes(x = x1, y = y1, xend = x2, yend = y2),
+    colour    = col_losing, linewidth = 0.9,
+    linetype  = "dashed", alpha = 0.5,
+    inherit.aes = FALSE
+  ) +
+  annotate("text", x = 0.5, y = 71.5,
+           label = "Counterfactual\n(parallel trend)",
+           size = 3, colour = col_losing,
+           alpha = 0.7, fontface = "italic") +
+
+  scale_colour_manual(
+    values = c("Losing"     = col_losing,
+               "Not Losing" = col_notlosing),
+    name   = "Score state"
+  ) +
+  scale_size_continuous(range = c(4, 9), guide = "none") +
+  scale_x_continuous(
+    breaks = c(0, 1),
+    labels = c("Early (≤70')", "Late (>70')"),
+    expand = expansion(add = c(0.15, 0.4))
+  ) +
+
+  labs(
+    title    = "D) DiD Estimator: The Comeback Shift",
+    subtitle = paste0(
+      "β₃ = +6.17m (p = 0.104) | ",
+      "Dashed = parallel trends counterfactual\n",
+      "Treatment effect = gap between red dot and dashed line at Late"
+    ),
+    x = NULL,
+    y = "Mean Press Height (m from own goal)"
+  ) +
+  theme_paper()
+
+# ============================================================
+# COMPOSE: Full 4-panel figure for the paper
+# ============================================================
+
+fig_did_full <- (fig_A) /
+  (fig_B | fig_C | fig_D) +
+  plot_layout(heights = c(1, 1.2)) +
+  plot_annotation(
+    title   = "The Comeback Shift: Spatial Evidence of Leverkusen's Never-Say-Die Identity",
+    subtitle = paste0(
+      "Difference-in-Differences design: Treatment = Losing after 70' | ",
+      "Outcome = Press height (location.x) | Bayer Leverkusen 2023/24 Bundesliga"
+    ),
+    theme = theme(
+      plot.title    = element_text(face = "bold",
+                                   hjust = 0.5, size = 16),
+      plot.subtitle = element_text(hjust = 0.5,
+                                   colour = "grey40", size = 11),
+      plot.background = element_rect(fill = "white", color = NA)
+    )
+  )
+
+print(fig_did_full)
+ggsave("fig_did_full.png",
+       plot   = fig_did_full,
+       width  = 18, height = 14,
+       dpi    = 300)
+
+# ── Also save individual panels for flexible paper layout ────
+ggsave("fig_did_A_pitchmap.png",  fig_A, width = 18, height = 5,  dpi = 300)
+ggsave("fig_did_B_ridges.png",    fig_B, width = 9,  height = 6,  dpi = 300)
+ggsave("fig_did_C_timeline.png",  fig_C, width = 9,  height = 6,  dpi = 300)
+ggsave("fig_did_D_estimator.png", fig_D, width = 8,  height = 6,  dpi = 300)
+
+```
