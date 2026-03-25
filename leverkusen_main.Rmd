@@ -32,7 +32,45 @@ knitr::opts_chunk$set(
 
 # Introduction
 
-**Motivation:** Almost any sport one can think of, whether football, basketball, or hockey, has a spatial component. Games, plays, wins, and losses all leave spatial traces that constitute excellent data sources for analyzing our favorite sports from a spatial standpoint. In our case, we are interested in how different spatial patterns emerge in football under varying conditions. Specifically, we focus on how Bayer Leverkusen's pressing patterns change when facing adverse match conditions in the Bundesliga.
+**Motivation:** On May 18, 2024, Bayer Leverkusen completed the most remarkable season in Bundesliga 
+history — 34 matches unbeaten, including ten comebacks from losing positions. A team 
+that trailed in the last minutes and still did not lose. A team that, statistically, 
+should have dropped points dozens of times and did not. Football analysts called it 
+resilience. Journalists called it mentality. Xabi Alonso called it a system.
+
+This paper asks a different question: **can we see it in the data?**
+
+If Leverkusen's comeback identity is a genuine tactical system rather than luck or 
+collective spirit, it should leave a spatial trace. Pressing — the act of immediately 
+closing down the opponent after losing the ball — is one of the most spatially 
+structured behaviors in modern football. Where a team chooses to press, and crucially 
+whether they press *higher* up the pitch when losing, is a direct reflection of their 
+tactical instructions under pressure. A team that genuinely believes it can recover 
+from any deficit at any moment of a match should, in theory, press more aggressively 
+when losing — not retreat.
+
+We find that it does. Leverkusen presses **6.2 metres higher** when losing after the 
+70th minute compared to the counterfactual trend — a gap roughly equal to the width 
+of the penalty area. Against their own 2015/16 incarnation, the contrast is even 
+starker: the same club, nine years earlier, *dropped* their press when losing late 
+by 3.7 metres. The comeback identity, in other words, is not the club — it is 
+Alonso's system.
+
+To arrive at these findings we combine three analytical layers. First, we map 
+*where* Leverkusen engineers turnovers using kernel density estimation and raster 
+zonal statistics, finding that wide attacking channels are systematically exploited 
+as pressing traps. Second, we use a Difference-in-Differences design to isolate the 
+causal effect of a losing score state on press height in the final 20 minutes of 
+matches. Third, we benchmark Leverkusen 2023/24 against the top seven teams from the 
+2015/16 Bundesliga season, showing that their pressing profile in losing-late 
+conditions sits in a quadrant no comparable team occupies — higher absolute press 
+height and stronger maintenance of that height under pressure simultaneously.
+
+The analysis is made possible by StatsBomb's open event data, which records the 
+precise spatial coordinates of every pressing action across the full season, and by 
+a geospatial toolkit — vector geometry via `sf`, raster operations via `terra` — 
+that allows us to treat a football pitch the way spatial economists treat a map.
+
 
 **Research Question:** Does Bayer Leverkusen's 2023/24 unbeaten season reflect a distinctive tactical system — specifically, an anomalous spatial pressing response under losing conditions — or is aggressive late-game pressing common among elite Bundesliga teams?
 
