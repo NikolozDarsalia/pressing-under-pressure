@@ -4,6 +4,10 @@ title: "Bayer Leverkusen 2023/24 — Spatial Analysis of Pressing Behavior (Neve
 author: 'Daniel Campos, Nikoloz Darsalia, Tina Sikharulidze, and Eric Gutiérrez'
 date: "`r Sys.Date()`"
 output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+    toc_depth: '3'
   html_document:
     toc: true
     toc_float: true
@@ -11,9 +15,6 @@ output:
     theme: flatly
     highlight: tango
     number_sections: true
-  pdf_document:
-    toc: true
-    toc_depth: '3'
 subtitle: BSE Geospatial Data Science | Term Paper
 ---
 
@@ -32,32 +33,26 @@ knitr::opts_chunk$set(
 
 # Introduction
 
-**Motivation:** On May 18, 2024, Bayer Leverkusen completed the most remarkable season in Bundesliga 
-history — 34 matches unbeaten, including ten comebacks from losing positions. A team 
-that trailed in the last minutes and still did not lose. A team that, statistically, 
-should have dropped points dozens of times and did not. Football analysts called it 
-resilience. Journalists called it mentality. Xabi Alonso called it a system.
+**Motivation:**
 
-This paper asks a different question: **can we see it in the data?**
+On April 14, 2024, Bayer Leverkusen finished the most remarkable season in Bundesliga history: 34 matches unbeaten, including ten comebacks from losing positions. A team that was trailing in the final minutes should have dropped points many times, yet they never did. Most analysts and journalists put this down to resilience, mentality, or luck, but Xabi Alonso was clear that it came from their tactical system. That difference is important: if a team's ability to come back when losing is something structural, built into how they press and move, rather than something that just happens, it changes how we think about what makes a winning team. This study aims to test that idea, shifting the focus of this season away from subjective explanations and toward something measurable. If their unbeaten identity was truly a system, it should leave a clear trace on the pitch.
 
-If Leverkusen's comeback identity is a genuine tactical system rather than luck or 
-collective spirit, it should leave a spatial trace. Pressing — the act of immediately 
-closing down the opponent after losing the ball — is one of the most spatially 
-structured behaviors in modern football. Where a team chooses to press, and crucially 
-whether they press *higher* up the pitch when losing, is a direct reflection of their 
-tactical instructions under pressure. A team that genuinely believes it can recover 
-from any deficit at any moment of a match should, in theory, press more aggressively 
-when losing — not retreat.
+Whether late-game performance reflects deliberate tactics or good fortune is something football science has not yet answered in a rigorous way. The field has advanced considerably in recent years, using spatio-temporal tracking data to study pitch control, passing networks, and how game state shapes team behavior, showing for example how teams that go ahead tend to drop their defensive line and give up possession. Pressing behavior has been studied spatially (Andrienko et al., 2017), automated tools have been developed to detect and measure counterpressing across full seasons (Bauer & Anzer, 2021; Peters et al., 2025), the effect of game state on ball recovery timing has been quantified (Vogelbein et al., 2014), and causal inference has been brought into football research through set-piece analysis like throw-ins (Epasinghege Dona & Swartz, 2023). What has not been done is combining all of this to ask whether a specific team pushes its pressing line higher in a systematic way when losing late in a match, tested with formal causal inference on spatial data. Where a team presses under pressure reflects what has been trained on the training ground, and Leverkusen's unusual comeback record makes it the best possible case to study: if a spatial signal exists anywhere, it should appear here.
 
-We find that it does. Leverkusen presses **6.2 metres higher** when losing after the 
+The analysis comes with real challenges. The main problem is partly caused by the team itself: because Leverkusen were so rarely losing late in matches, the number of situations available to study is small, which limits what traditional statistical methods can confidently pick up. Spatial event data also adds difficulty, since coordinated pressing and individual desperate running can look similar in the numbers. These are not easy problems, but they are not impossible ones either. A pressing system that was genuinely designed to handle any deficit should produce a spatial pattern clear enough to detect even in noisy data. This brings us to our main research question: does Leverkusen's 2023/24 season reflect a distinctive tactical system, specifically an unusual spatial pressing response when losing, or is aggressive late-game pressing simply something all top Bundesliga teams do?
+
+
+**Preview of the Results:**
+
+We find that it does. Leverkusen presses 6.2 metres higher when losing after the 
 70th minute compared to the counterfactual trend — a gap roughly equal to the width 
 of the penalty area. Against their own 2015/16 incarnation, the contrast is even 
-starker: the same club, nine years earlier, *dropped* their press when losing late 
+starker: the same club, nine years earlier, dropped their press when losing late 
 by 3.7 metres. The comeback identity, in other words, is not the club — it is 
 Alonso's system.
 
 To arrive at these findings we combine three analytical layers. First, we map 
-*where* Leverkusen engineers turnovers using kernel density estimation and raster 
+where Leverkusen engineers turnovers using kernel density estimation and raster 
 zonal statistics, finding that wide attacking channels are systematically exploited 
 as pressing traps. Second, we use a Difference-in-Differences design to isolate the 
 causal effect of a losing score state on press height in the final 20 minutes of 
@@ -72,8 +67,6 @@ a geospatial toolkit — vector geometry via `sf`, raster operations via `terra`
 that allows us to treat a football pitch the way spatial economists treat a map.
 
 
-**Research Question:** Does Bayer Leverkusen's 2023/24 unbeaten season reflect a distinctive tactical system — specifically, an anomalous spatial pressing response under losing conditions — or is aggressive late-game pressing common among elite Bundesliga teams?
-
 **Paper Structure:**
 
 The structure of the document is as follows. First, in section 2, we list the required packages for the project. In section 3, the data collection process is detailed, which consists on retrieving StatsBomb event data and ClubElo opponent ratings. Then, in section 4, we perform some descriptive analysis of the data, finding where does Bayer Leverkusen press and where do turnovers happen. Finally, in section 5, we perform a Difference-in-Differences to verify whether Bayer Leverkusen systematically shifts their press forward when losing late. Additionally, we also include an extension that benchmarks the team's performance against 2015/16 Bundesliga top teams. Section 6 concludes.
@@ -82,26 +75,26 @@ The structure of the document is as follows. First, in section 2, we list the re
 
 # Setup and Libraries
 
-First, we load the necessary R packages to handle the complete lifecycle of our analysis. We rely on core tools like `dplyr` and `tidyr` for robust data manipulation and cleaning. To access our raw event data, we use `StatsBombR`, which connects directly to StatsBomb's free API. Because our research question centers heavily on tactical geometry, we incorporate specialized spatial libraries: `sf` for managing vector data (such as individual pressing events) and `terra` for raster operations (like continuous density heatmaps). Finally, we load our visualization toolkit, prominently featuring `ggplot2` and `ggsoccer`, to accurately map our spatial findings onto a standardized football pitch.
+First, we load the necessary R packages to handle the complete pipeline of our analysis. We rely on libraries like `dplyr` and `tidyr` for robust data manipulation and cleaning. To access our raw event data, we use `StatsBombR`, which connects directly to StatsBomb's free API. Because our research question centers heavily on tactical geometry, we incorporate specialized spatial libraries: `sf` for managing vector data (such as individual pressing events) and `terra` for raster operations (like continuous density heatmaps). Finally, we load our visualization toolkit, featuring `ggplot2` and `ggsoccer`, to accurately map our spatial findings onto a standardized football pitch.
 
 ```{r libraries}
-# ── Core data manipulation ────────────────────────────────────
+# Core data manipulation
 library(dplyr)
 library(tidyr)
 library(lubridate)
 library(readr)
 library(broom)
 
-# ── StatsBomb free data ───────────────────────────────────────
+# StatsBomb free data
 library(StatsBombR)
 
-# ── Vector spatial data ───────────────────────────────────────
+# Vector spatial data
 library(sf)
 
-# ── Raster spatial data ───────────────────────────────────────
+# Raster spatial data
 library(terra)
 
-# ── Visualization ─────────────────────────────────────────────
+# Visualization
 library(ggplot2)
 library(ggsoccer)   # football pitch annotation layer
 library(patchwork)  # combine ggplot panels
@@ -114,20 +107,22 @@ library(scales)
 
 ## StatsBomb: Match Events
 
-We use the **StatsBomb open data** API via the `StatsBombR` package.
+We use the StatsBomb open data API via the `StatsBombR` package.
 The data covers all Bayer Leverkusen matches in the 2023/24 Bundesliga season.
 
-> **Coordinate system:** StatsBomb uses a flat 2D pitch with x ∈ [0, 120] and y ∈ [0, 80].
-> Leverkusen always attacks toward x = 120. All spatial objects in this file use this
-> coordinate system with no geographic CRS (`crs = NA_crs_`).
+Notice that StatsBomb uses a flat 2D pitch with x ∈ [0, 120] and y ∈ [0, 80] as coordinate system.
+Leverkusen always attacks towards x = 120. All spatial objects in this file use this
+coordinate system with no geographic CRS (`crs = NA_crs_`).
 
 
-```{r data-load}
+```{r data-load, warning=FALSE}
 # Download all matches for the 2023/24 Bundesliga season (competition_id = 9)
-comps <- FreeCompetitions() %>%
-  filter(competition_id == 9, season_name == "2023/2024")
-
-matches <- FreeMatches(comps)
+invisible(capture.output({
+  comps <- FreeCompetitions() %>%
+    filter(competition_id == 9, season_name == "2023/2024")
+  
+  matches <- FreeMatches(comps)
+}))
 
 # Keep only Leverkusen matches
 leverkusen_matches <- matches %>%
@@ -142,15 +137,18 @@ cat("Leverkusen matches found:", nrow(leverkusen_matches), "\n")
 ```{r data-events}
 # Download all events for those matches.
 # allclean() parses nested JSON columns (location, shot, etc.) into flat columns.
-cat("Downloading full-season event data... (this may take a minute)\n")
-events_raw <- free_allevents(MatchesDF = leverkusen_matches)
-events     <- allclean(events_raw)
+cat("Downloading full-season event data...\n")
 
-# Filter to Leverkusen pressure events — the raw material for our analysis
+invisible(capture.output({
+events_raw <- free_allevents(MatchesDF = leverkusen_matches)
+events <- allclean(events_raw)
+}))
+
+# Filter to Leverkusen pressure events
 pressure_events <- events %>%
   filter(
     team.name == "Bayer Leverkusen",
-    type.name  == "Pressure",
+    type.name == "Pressure",
     !is.na(location.x),
     !is.na(location.y)
   )
@@ -160,8 +158,7 @@ cat("Total Leverkusen pressure events:", nrow(pressure_events), "\n")
 
 ## ClubElo: Opponent Quality Ratings
 
-We fetch **ClubElo ratings** for each opponent on the day of the match.
-This allows us to stratify the analysis by opponent quality tier.
+We fetch ClubElo ratings, an estimation of its strength based on past results, for each opponent on the day of the match. This allows us to stratify the analysis by opponent quality tier.
 
 ```{r elo-helper}
 # Helper function: returns the ClubElo rating for a team on a given date.
@@ -169,12 +166,12 @@ This allows us to stratify the analysis by opponent quality tier.
 # the match date, with a fallback to the most recent rating before the date.
 get_elo_on_date <- function(team, date) {
   date <- as.Date(date)
-  url  <- paste0("http://api.clubelo.com/", team)
+  url <- paste0("http://api.clubelo.com/", team)
   hist <- suppressWarnings(read_csv(url, show_col_types = FALSE)) %>%
     mutate(From = as.Date(From), To = as.Date(To)) %>%
     arrange(From)
 
-  # Primary: find a row where date falls within [From, To]
+  # Find a row where date falls within [From, To]
   in_range <- hist %>%
     filter(!is.na(From) & date >= From & (is.na(To) | date <= To))
   if (nrow(in_range) >= 1) return(as.numeric(in_range$Elo[1]))
@@ -188,8 +185,8 @@ get_elo_on_date <- function(team, date) {
 ```
 
 ```{r elo-thresholds}
-# Compute fixed ELO tier thresholds from a pre-season anchor date.
-# This ensures thresholds do not shift mid-season as ratings update.
+# For simplicity, we compute fixed ELO tier thresholds from a pre-season anchor 
+# date. This ensures thresholds do not shift mid-season as ratings update.
 anchor_date <- as.Date("2023-08-18")
 
 bundesliga_anchor <- read_csv(
@@ -198,13 +195,14 @@ bundesliga_anchor <- read_csv(
 ) %>%
   filter(
     Country == "GER",
-    Level   == 1,
+    Level == 1,
     as.Date(From) <= anchor_date,
-    as.Date(To)   >= anchor_date
+    as.Date(To) >= anchor_date
   )
 
-# Tertile cuts: bottom third = Weak, middle = Mid, top third = Top
-elo_cuts <- quantile(bundesliga_anchor$Elo, probs = c(1/3, 2/3), type = 7, na.rm = TRUE)
+# Tiers: bottom third = Weak, middle = Mid, top third = Top
+elo_cuts <- quantile(bundesliga_anchor$Elo, probs = c(1/3, 2/3), type = 7, 
+                     na.rm = TRUE)
 p33 <- unname(elo_cuts[1])
 p67 <- unname(elo_cuts[2])
 
@@ -214,7 +212,7 @@ cat(sprintf("ELO thresholds (anchor: %s)\n  P33 = %.0f  |  P67 = %.0f\n",
 
 ```{r elo-join}
 # Build a match-level table with opponent name, match date, and ELO rating.
-# StatsBomb team names differ from ClubElo slugs — we recode them here.
+# StatsBomb team names differ from ClubElo records, we standardize them.
 match_info <- leverkusen_matches %>%
   mutate(
     opponent = ifelse(
@@ -283,16 +281,17 @@ print(table(pressure_events_final$elo_tier))
 
 ---
 
-# Motivating Evidence: Pressing Trap Geography
+# Descriptive Analysis of Bayer Leverkusen's Spatial Patterns
 
-Before asking *when* the press shifts, we establish *where* Bayern Leverkusen systematically engineer turnovers. This section combines **KDE heatmaps**, **vector zone polygons**,
-and **raster zonal statistics** to characterize the spatial structure of pressing traps.
+Before asking when the press shifts, we establish where Bayern Leverkusen systematically try to force turnovers. This section combines KDE heatmaps, vector zone polygons,
+and raster zonal statistics to characterize the spatial structure of pressing traps.
 
-## Clean Press Dataset + Counterpress Flag
+## Building the Zonal Counterpress Rate Dataset
 
 ```{r press-clean}
-# In StatsBomb, a counterpress event (pressing immediately after losing the ball)
-# has counterpress = TRUE. NA means it was a regular press — we recode NA as FALSE.
+# In StatsBomb, a counterpress event (pressing immediately after losing the 
+# ball) has counterpress = TRUE. NA means it was a regular press, so we recode 
+# NA as FALSE.
 press_clean <- pressure_events_final %>%
   filter(!is.na(location.x), !is.na(location.y)) %>%
   mutate(
@@ -315,32 +314,32 @@ press_clean <- pressure_events_final %>%
                               "A3_L", "A3_C", "A3_R"))
   )
 
-cat("=== Pressing Trap Summary ===\n")
-cat("Total press events:      ", nrow(press_clean), "\n")
-cat("Counterpress events:     ", sum(press_clean$counterpress_flag), "\n")
-cat("Baseline CP rate:        ",
+cat("--- Pressing Trap Summary ---\n")
+cat("Total press events:", nrow(press_clean), "\n")
+cat("Counterpress events:", sum(press_clean$counterpress_flag), "\n")
+cat("Baseline CP rate:",
     round(mean(press_clean$counterpress_flag) * 100, 1), "%\n\n")
 
-# Counterpress rate by spatial zone — tells us WHERE the traps are most effective
+# Counterpress rate by spatial zone
 press_clean %>%
   group_by(zone6) %>%
   summarise(
-    n_presses      = n(),
+    n_presses = n(),
     n_counterpress = sum(counterpress_flag),
-    cp_rate        = round(mean(counterpress_flag) * 100, 1),
+    cp_rate = round(mean(counterpress_flag) * 100, 1),
     .groups = "drop"
   ) %>%
   arrange(desc(cp_rate))
 ```
 
-## Vector Geometry: Zone Polygons and Spatial Join
+## Building the Zonal Counterpress Raster
 
 We formally build the 7 pitch zones as `sf` polygon objects. This allows us to
-use the `sf` spatial join toolkit (`st_join` + `st_intersects`) to assign
+use the `sf` spatial join toolkit (`st_join`, `st_intersects`) to assign
 zone membership to each press event.
 
 ```{r vector-zones}
-# Helper: creates a rectangular sf POLYGON from coordinate bounds.
+# Helper function: creates a rectangular sf POLYGON from coordinate bounds.
 # Returns an sf data frame with a zone6 label column and flat CRS.
 make_zone_polygon <- function(xmin, xmax, ymin, ymax, name) {
   # Build the ring of 5 coordinates (close the polygon by repeating first point)
@@ -349,24 +348,24 @@ make_zone_polygon <- function(xmin, xmax, ymin, ymax, name) {
       xmax, ymin,
       xmax, ymax,
       xmin, ymax,
-      xmin, ymin),    # close the ring
+      xmin, ymin),  
     ncol = 2, byrow = TRUE
   )
   st_sf(
-    zone6    = name,
+    zone6 = name,
     geometry = st_sfc(st_polygon(list(coords)), crs = NA_crs_)
   )
 }
 
 # Create all 7 zone polygons and bind into a single sf object
 zone_polygons <- bind_rows(
-  make_zone_polygon(  0,  40,   0,  80,   "D3"),
-  make_zone_polygon( 40,  80,   0,  26.7, "M3_L"),
-  make_zone_polygon( 40,  80,  26.7, 53.3, "M3_C"),
-  make_zone_polygon( 40,  80,  53.3, 80,   "M3_R"),
-  make_zone_polygon( 80, 120,   0,  26.7, "A3_L"),
-  make_zone_polygon( 80, 120,  26.7, 53.3, "A3_C"),
-  make_zone_polygon( 80, 120,  53.3, 80,   "A3_R")
+  make_zone_polygon(0, 40, 0, 80, "D3"),
+  make_zone_polygon(40, 80, 0, 26.7, "M3_L"),
+  make_zone_polygon(40, 80, 26.7, 53.3, "M3_C"),
+  make_zone_polygon(40, 80, 53.3, 80, "M3_R"),
+  make_zone_polygon(80, 120, 0, 26.7, "A3_L"),
+  make_zone_polygon(80, 120, 26.7, 53.3, "A3_C"),
+  make_zone_polygon(80, 120, 53.3, 80, "A3_R")
 )
 
 cat("Zone polygons created:\n")
@@ -378,8 +377,8 @@ print(zone_polygons %>% st_drop_geometry())
 press_sf <- press_clean %>%
   st_as_sf(
     coords = c("location.x", "location.y"),
-    crs    = NA_crs_,    # flat pitch coordinates — no geographic CRS needed
-    remove = FALSE       # keep original x/y columns for downstream use
+    crs = NA_crs_,   
+    remove = FALSE  
   )
 
 # Spatial join: assign zone to each press point
@@ -402,41 +401,44 @@ zone_centroids <- zone_polygons %>%
     cx = st_coordinates(.)[, 1],   # extract x from sfc geometry
     cy = st_coordinates(.)[, 2]    # extract y from sfc geometry
   ) %>%
-  st_drop_geometry()  # drop geometry column — only need the coordinates for labels
+  st_drop_geometry()  # drop geometry column
 
 print(zone_centroids)
 ```
 
-## KDE Heatmaps: Press Density vs Trap Density
+## KDE Heatmaps: Press Density vs Counterpress Density
 
-The KDE maps show the spatial density of (a) all pressing events and
-(b) only counterpress events. The difference reveals where Leverkusen
-*intend* to win the ball back, not just where they press.
+The KDE maps show the spatial density of (A) all pressing events and
+(B) only counterpressing events. A counterpressing event is usually defined as an attempt to win back possession upon losing it, and includes the following: pressure, dribbled past, 50-50, duel, block, interception, and foul committed (not offensive). In our case, the time threshold to classify any of these actions as counterpressing events is set at 5 seconds.
 
 ```{r kde-maps, fig.height=5}
-# Helper: build a KDE heatmap on a StatsBomb pitch
+# Helper function: build a KDE heatmap on a StatsBomb pitch
 make_kde_map <- function(data, title, subtitle,
                          fill_palette = "magma", legend_label = "Density") {
   ggplot(data) +
     stat_density_2d(
       aes(x = location.x, y = location.y, fill = after_stat(ndensity)),
-      geom     = "raster",
-      contour  = FALSE,
-      n        = 200,
-      h        = c(12, 12)   # bandwidth in pitch metres
+      geom = "raster",
+      contour = FALSE,
+      n = 200,
+      h = c(12, 12)   # bandwidth in pitch meters
     ) +
     scale_fill_viridis_c(
-      option    = fill_palette,
+      option = fill_palette,
       direction = -1,
-      begin     = 0.05,
-      name      = legend_label,
-      limits    = c(0, 1)
+      begin = 0.05,
+      name = legend_label,
+      limits = c(0, 1)
     ) +
     # Mask rendering outside pitch boundaries with white rectangles
-    annotate("rect", xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=0,   fill="white", color=NA) +
-    annotate("rect", xmin=-Inf, xmax=Inf, ymin=80,   ymax=Inf, fill="white", color=NA) +
-    annotate("rect", xmin=-Inf, xmax=0,   ymin=-Inf, ymax=Inf, fill="white", color=NA) +
-    annotate("rect", xmin=120,  xmax=Inf, ymin=-Inf, ymax=Inf, fill="white", color=NA) +
+    annotate("rect", xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=0, fill="white", 
+             color=NA) +
+    annotate("rect", xmin=-Inf, xmax=Inf, ymin=80, ymax=Inf, fill="white", 
+             color=NA) +
+    annotate("rect", xmin=-Inf, xmax=0, ymin=-Inf, ymax=Inf, fill="white", 
+             color=NA) +
+    annotate("rect", xmin=120, xmax=Inf, ymin=-Inf, ymax=Inf, fill="white", 
+             color=NA) +
     annotate_pitch(dimensions = pitch_statsbomb, colour = "grey30", fill = NA) +
     # Zone grid reference lines
     geom_vline(xintercept = c(40, 80), colour = "white",
@@ -447,38 +449,37 @@ make_kde_map <- function(data, title, subtitle,
     labs(title = title, subtitle = subtitle) +
     theme_pitch() +
     theme(
-      plot.title       = element_text(face = "bold", size = 13, hjust = 0.5),
-      plot.subtitle    = element_text(size = 10, hjust = 0.5, colour = "grey40"),
-      legend.position  = "right",
-      plot.background  = element_rect(fill = "white", color = NA),
+      plot.title = element_text(face = "bold", size = 13, hjust = 0.5),
+      plot.subtitle = element_text(size = 10, hjust = 0.5, colour = "grey40"),
+      legend.position = "right",
+      plot.background = element_rect(fill = "white", color = NA),
       panel.background = element_rect(fill = "white", color = NA)
     )
 }
 
-# Map A: all press events — where does Leverkusen press?
+# Map A: all pressing events
 map_all <- make_kde_map(
   press_clean,
-  title         = "A) All Pressing Events",
-  subtitle      = "Spatial density — where Leverkusen presses",
-  fill_palette  = "Blues",
-  legend_label  = "Press\nDensity"
+  title = "A) All Pressing Events",
+  subtitle = "Spatial density: where Leverkusen presses",
+  fill_palette = "Blues",
+  legend_label = "Pressing\nDensity"
 )
 
-# Map B: counterpress events only — where do they win it back?
+# Map B: counterpressing events only
 map_cp <- make_kde_map(
   press_clean %>% filter(counterpress_flag == TRUE),
-  title         = "B) Counterpress Events (Traps Triggered)",
-  subtitle      = "Spatial density — where presses win the ball back immediately",
-  fill_palette  = "magma",
-  legend_label  = "Trap\nDensity"
+  title = "B) Counterpressing Events",
+  subtitle = "Spatial density: where Leverkusen counterpresses",
+  fill_palette = "magma",
+  legend_label = "Trap\nDensity"
 )
 
 fig1 <- map_all + map_cp +
   plot_annotation(
-    title    = "Bayer Leverkusen 2023/24: Press Density vs Trap Density",
-    subtitle = "Left: where they press  |  Right: where they win the ball",
-    theme    = theme(
-      plot.title    = element_text(face = "bold", size = 15, hjust = 0.5),
+    title = "Bayer Leverkusen 2023/24: Pressing Density vs Trap Density",
+    theme = theme(
+      plot.title = element_text(face = "bold", size = 15, hjust = 0.5),
       plot.subtitle = element_text(size = 11, hjust = 0.5, colour = "grey40")
     )
   )
@@ -487,20 +488,21 @@ print(fig1)
 ggsave("fig1_press_vs_trap_density.png", plot = fig1,
        width = 14, height = 6, dpi = 300)
 ```
-The left panel (Plot A) visualizes the spatial density of Bayer Leverkusen's total pressing events throughout the 2023/24 season. The heatmap reveals a striking concentration of pressing activity deep in the opponent's penalty area, represented by the distinct dark purple node on the right side of the pitch. Beyond this intense focal point, the team's general pressing footprint is moderately distributed (shown in green) across the middle third and flanks, indicating a structured approach to applying pressure outside of the final third.
 
-The right panel (Plot B) shifts the focus to successful counterpressing events, or "traps triggered," illustrating exactly where Leverkusen immediately regains possession. Unlike the highly localized spike seen in their overall pressing, the density of successful ball recoveries is broadly distributed across the entire attacking half. The heavy clustering of high-density dark purple zones from the center circle through to the opponent's final third demonstrates that their aggressive tactical system is highly effective at forcing turnovers in advanced, dangerous areas.
+The left panel (A) visualizes the spatial density of Bayer Leverkusen's total pressing events throughout the 2023/24 season. The heatmap reveals a striking concentration of pressing activity deep in the opponent's penalty area, represented by the distinct dark blue tone on the right side of the pitch. Beyond this intense focal point, the team's general pressing footprint is moderately distributed across the middle third and flanks, indicating a structured approach to applying pressure outside of the final third.
 
+The right panel (B) shifts the focus to counterpressing events, illustrating exactly where Leverkusen immediately presses right after losing the ball in an attempt to regain possesion. Unlike the highly localized spike seen in their overall pressing, the density of these counterpressing events is broadly distributed across the entire attacking half. The heavy clustering of high-density dark purple zones, which extends from the center circle through to the opponent's final third, demonstrates that their tactical system prioritizes not allowing the opponent to build a potentially effective attacking play by pressing up high, rather than just recovering a balanced structure to face the defensive phase.
+ 
 ```{r kde-by-tier, fig.height=5}
-# Repeat for each ELO tier: does the trap zone shift against stronger opponents?
+# Repeat for each ELO tier
 tier_maps <- lapply(
   c("Top opponent", "Mid opponent", "Weak opponent"),
   function(tier) {
     d <- press_clean %>% filter(counterpress_flag == TRUE, elo_tier == tier)
     make_kde_map(
       d,
-      title        = paste0("Trap Zones vs ", tier),
-      subtitle     = paste0("n = ", nrow(d), " counterpress events"),
+      title = paste0("Trap Zones vs ", tier),
+      subtitle = paste0("n = ", nrow(d), " counterpressing events"),
       fill_palette = "magma",
       legend_label = "Trap\nDensity"
     )
@@ -510,9 +512,9 @@ tier_maps <- lapply(
 fig2 <- tier_maps[[1]] + tier_maps[[2]] + tier_maps[[3]] +
   plot_layout(ncol = 3) +
   plot_annotation(
-    title    = "Bayer Leverkusen: Trap Zone Geography by Opponent Quality",
+    title = "Bayer Leverkusen: Trap Zone Geography by Opponent Quality",
     subtitle = "Does the pressing trap location change against stronger teams?",
-    theme    = theme(
+    theme = theme(
       plot.title    = element_text(face = "bold", size = 15, hjust = 0.5),
       plot.subtitle = element_text(size = 11, hjust = 0.5, colour = "grey40")
     )
@@ -522,51 +524,54 @@ print(fig2)
 ggsave("fig2_trap_zones_by_elo.png", plot = fig2,
        width = 18, height = 6.5, dpi = 300)
 ```
-This three-panel visualization breaks down Bayer Leverkusen's counterpressing effectiveness ("Trap Zones") based on the quality of the opposition. A clear spatial shift emerges as opponent strength varies. Against "Top" opponents (left panel, n=242), successful ball recoveries are heavily clustered closer to the midfield line and even slightly into their own half. This suggests that against elite teams with stronger build-up play, Leverkusen's counterpress naturally engages deeper, or they are forced into a marginally more pragmatic recovery structure. In contrast, against "Mid" opponents (center panel, n=421), the high-density trap zones expand significantly, covering almost the entire attacking half and reflecting a dominant team capable of asserting its pressing structure higher up the pitch.
 
-The right panel, illustrating matches against "Weak" opponents (n=435), demonstrates their most aggressive spatial pattern. Here, the darkest density clusters are pushed extremely high up the pitch, heavily concentrating just outside and around the opponent's penalty area. Taken together, these heatmaps reveal a highly dynamic and scalable tactical system: while Leverkusen consistently relies on aggressive counterpressing, the geographical height of their engagement scales inversely with opponent quality. They assert maximum territorial dominance and suffocate weaker sides deep in their own third, while adapting their recovery line appropriately when facing top-tier rivals.
+This three-panel visualization breaks down Bayer Leverkusen's counterpressing events ("Trap Zones") based on the quality of the opposition. A clear spatial shift emerges as opponent strength varies. Against "Top" opponents (left panel, n=242), events are clustered together throughout the second and final thirds. This suggests that against elite teams with stronger build-up play, Leverkusen is naturally forced into a marginally more pragmatic recovery structure. In contrast, against "Mid" opponents (center panel, n=421), the high-density trap zones expand significantly, covering almost the entire attacking half and reflecting a dominant team capable of asserting its pressing structure higher up the pitch.
+
+The right panel, illustrating matches against "Weak" opponents (n=435), demonstrates another aggressive spatial pattern. Here, the darkest density clusters are pushed moderately high up the pitch, with most counterpressing events taking place in the opponent's half. Notice how the overall density of the events is lower when compared to the other two tiers. This can be attributed to the fact that weak opponents likely have less ball possession, and therefore do not generate nearly as many counterpressing opportunities.
+
+Taken together, these heatmaps reveal a highly dynamic and tactical system: when facing top-tier teams, provided that the opponent has more ball possession, more counterpressing opportunities are generated. However, these events tend to occur closer to the midfield line. When facing mid opponents, the ball possession of the opponents is still moderately high, but their lower attacking threat enables Leverkusen to pressure higher up the pitch with less risk. In the other extreme, when facing weak opponents, the overall counterpressing opportunities decrease, and the pressure line gets slightly closer to the midfield line.
 
 ## Raster Analysis: Trap Rate Surface and Zonal Statistics
 
-We convert the continuous press event data into a **raster surface** and apply
-**zonal statistics** to compute the mean trap rate per pitch zone.
+We convert the continuous press event data into a raster surface and apply
+zonal statistics to compute the mean trap rate per pitch zone.
 
 ```{r raster-setup}
-# Step 1: Create an empty raster covering the StatsBomb pitch at 1m resolution
+# Create an empty raster covering the StatsBomb pitch at 1m resolution
 pitch_rast <- rast(
   xmin = 0, xmax = 120,
   ymin = 0, ymax = 80,
-  resolution = 1    # 1m × 1m cells
+  resolution = 1  
 )
 
-# Step 2: Rasterize press events — count total presses per cell
+# Rasterize press events
 press_vect <- vect(
   press_clean %>% select(location.x, location.y),
   geom = c("location.x", "location.y"),
-  crs  = ""
+  crs = ""
 )
 
 rast_total <- rasterize(press_vect, pitch_rast, fun = "count", background = 0)
 
-# Step 3: Rasterize counterpress events — count traps per cell
+# Rasterize counterpress events
 cp_vect <- vect(
   press_clean %>% filter(counterpress_flag == TRUE) %>%
     select(location.x, location.y),
   geom = c("location.x", "location.y"),
-  crs  = ""
+  crs = ""
 )
 
 rast_cp <- rasterize(cp_vect, pitch_rast, fun = "count", background = 0)
 
-# Step 4: Compute cell-level trap rate = counterpresses / total presses
+# Compute cell-level trap rate = counterpresses / total presses
 # Cells with no presses get NA (we avoid division by zero)
 rast_rate <- rast_cp / rast_total
 values(rast_rate)[values(rast_total) == 0] <- NA
 
-# Step 5: Apply a 5×5 focal (moving window) smoother to reduce noise
+# Apply a 5×5 focal (moving window) smoother to reduce noise
 rast_rate_smooth <- focal(
   rast_rate,
-  w   = matrix(1, 5, 5),   # 5m × 5m window
+  w = matrix(1, 5, 5),
   fun = mean,
   na.rm = TRUE
 )
@@ -576,8 +581,7 @@ cat("Trap rate range:  ", range(values(rast_rate_smooth), na.rm = TRUE), "\n")
 ```
 
 ```{r zonal-stats}
-# Step 6: Compute ZONAL STATISTICS — mean trap rate per zone polygon
-# We need to rasterize the zone labels first, then summarise
+# Compute zonal statistics
 
 # Rasterize zone polygons to match the pitch raster resolution
 zone_vect <- vect(zone_polygons)
@@ -587,13 +591,13 @@ zone_vect$zone_id <- as.integer(factor(zone_vect$zone6))
 
 rast_zones <- rasterize(zone_vect, pitch_rast, field = "zone_id")
 
-# zonal(): compute mean trap rate (from smoothed raster) per zone (from zone raster)
+# Compute mean trap rate (from smoothed raster) per zone (from zone raster)
 zone_stats <- zonal(rast_rate_smooth, rast_zones, fun = "mean", na.rm = TRUE)
 
 # Attach zone labels and express as percentages
 zone_label_key <- data.frame(
   zone_id = as.integer(factor(zone_polygons$zone6)),
-  zone6   = zone_polygons$zone6
+  zone6 = zone_polygons$zone6
 )
 
 zone_stats_labelled <- zone_stats %>%
@@ -603,7 +607,7 @@ zone_stats_labelled <- zone_stats %>%
   mutate(trap_rate_pct = round(trap_rate_zonal * 100, 1)) %>%
   arrange(desc(trap_rate_pct))
 
-cat("=== Zonal Trap Rates (terra::zonal) ===\n")
+cat("--- Zonal Trap Rates (terra::zonal) ---\n")
 print(zone_stats_labelled %>% select(zone6, trap_rate_pct))
 ```
 
@@ -624,38 +628,35 @@ zone_polygons_stats <- zone_polygons %>%
 zone_label_coords <- zone_polygons_stats %>%
   st_centroid() %>%
   mutate(
-    cx    = st_coordinates(.)[, 1],
-    cy    = st_coordinates(.)[, 2],
+    cx = st_coordinates(.)[, 1],
+    cy = st_coordinates(.)[, 2],
     label = paste0(zone6, "\n", trap_rate_pct, "%")
   ) %>%
   st_drop_geometry()
 
 # Extract polygon borders as plain data frame for geom_path()
-# geom_sf() conflicts with coord_fixed() used by ggsoccer — geom_path() is the fix
 zone_borders_df <- zone_polygons_stats %>%
   st_coordinates() %>%
   as.data.frame() %>%
   rename(x = X, y = Y) %>%
-  mutate(group = paste(L1, L2, sep = "_"))  # unique group per polygon ring
+  mutate(group = paste(L1, L2, sep = "_")) # unique group per polygon ring
 
 fig3 <- ggplot() +
-  # Raster layer: smoothed trap rate surface (terra output → data frame)
+  # Raster layer
   geom_raster(data = rast_df,
               aes(x = x, y = y, fill = trap_rate_smooth)) +
   scale_fill_distiller(
-    palette   = "RdYlGn",
+    palette = "RdYlGn",
     direction = 1,
-    name      = "Trap Rate\n(smoothed)",
-    limits    = c(0, 0.6),
-    labels    = percent_format(accuracy = 1)
+    name = "Trap Rate\n(smoothed)",
+    limits = c(0, 0.6),
+    labels = percent_format(accuracy = 1)
   ) +
   # Vector layer: zone polygon borders
-  # Dark thick borders make zone boundaries clearly visible against any raster color
   geom_path(data      = zone_borders_df,
             aes(x = x, y = y, group = group),
             colour    = "grey10",
             linewidth = 1.8) +
-  # Zone labels with opaque background box for readability over any raster cell
   geom_label(data          = zone_label_coords,
              aes(x = cx, y = cy, label = label),
              colour        = "grey10",
@@ -666,23 +667,26 @@ fig3 <- ggplot() +
              label.padding = unit(0.3, "lines"),
              label.size    = 0.3,
              alpha         = 0.85) +
-  # Pitch boundary masks — slightly inward to hide noisy raster edges
-  annotate("rect", xmin=-Inf, xmax=Inf,  ymin=-Inf, ymax=1,   fill="white", color=NA) +
-  annotate("rect", xmin=-Inf, xmax=Inf,  ymin=79,   ymax=Inf, fill="white", color=NA) +
-  annotate("rect", xmin=-Inf, xmax=1,    ymin=-Inf, ymax=Inf, fill="white", color=NA) +
-  annotate("rect", xmin=119,  xmax=Inf,  ymin=-Inf, ymax=Inf, fill="white", color=NA) +
+  # Pitch boundary masks, slightly inward to hide noisy raster edges
+  annotate("rect", xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=1, fill="white", 
+           color=NA) +
+  annotate("rect", xmin=-Inf, xmax=Inf, ymin=79, ymax=Inf, fill="white", 
+           color=NA) +
+  annotate("rect", xmin=-Inf, xmax=1, ymin=-Inf, ymax=Inf, fill="white", 
+           color=NA) +
+  annotate("rect", xmin=119, xmax=Inf, ymin=-Inf, ymax=Inf, fill="white", 
+           color=NA) +
   annotate_pitch(dimensions = pitch_statsbomb, colour = "grey40", fill = NA) +
   coord_fixed(xlim = c(-2, 122), ylim = c(-3, 83), expand = FALSE) +
   labs(
-    title    = "Pressing Trap Rate: Raster Surface + Zonal Statistics",
-    subtitle = "Smoothed cell-level trap rate (5m focal window) | Zone labels = terra::zonal() mean"
+    title    = "Counterpressing Rate: Raster Surface + Zonal Statistics",
   ) +
   theme_pitch() +
   theme(
-    plot.title       = element_text(face = "bold", size = 13, hjust = 0.5),
-    plot.subtitle    = element_text(size = 10, hjust = 0.5, colour = "grey40"),
-    legend.position  = "right",
-    plot.background  = element_rect(fill = "white", color = NA),
+    plot.title = element_text(face = "bold", size = 13, hjust = 0.5),
+    plot.subtitle = element_text(size = 10, hjust = 0.5, colour = "grey40"),
+    legend.position = "right",
+    plot.background = element_rect(fill = "white", color = NA),
     panel.background = element_rect(fill = "white", color = NA)
   )
 
@@ -690,55 +694,52 @@ print(fig3)
 ggsave("fig3_trap_rate_raster_zonal.png", plot = fig3,
        width = 10, height = 7, dpi = 300)
 ```
-This visualization combines a smoothed raster surface with zonal statistics to map the efficiency of Bayer Leverkusen's pressing traps across different areas of the pitch. The starkest contrast immediately appears between their own defensive third and the rest of the field. In the defensive zone (D3), the trap rate is lowest, averaging just 8.3% and dominated by the red end of the color spectrum. Moving up the pitch into the middle third (M3), their pressing efficiency increases significantly and remains remarkably consistent across the width of the field, with the left (23.5%), central (23.7%), and right (22.1%) channels all showing similar, moderate success rates characterized by yellow and light green hues.
 
-The highest efficiency of Leverkusen's pressing traps occurs in the attacking third (A3), particularly out on the flanks. The deepest green patches, representing the highest smoothed trap rates, cluster heavily in the advanced wide areas, yielding zonal averages of 39% on the left (A3_L) and 36% on the right (A3_R). The central attacking zone (A3_C) is slightly less efficient at 31%, likely due to the higher density of defending players in the middle of the pitch. Ultimately, this geographic breakdown highlights a clear tactical design: Leverkusen is highly adept at funneling the opposition out wide and springing highly successful, aggressive pressing traps deep in the opponent's half.
+This visualization combines a smoothed raster surface with zonal statistics, with the purpose of mapping the ratio of Bayer Leverkusen's counterpressing events against all pressures across different areas of the pitch. The most striking contrast immediately appears between their own defensive third and the rest of the field. In the defensive zone (D3), the trap rate is lowest, averaging just 8.3% and dominated by the red end of the color spectrum. Moving up the pitch into the middle third (M3), their counterpressing rate increases significantly and remains remarkably consistent across the width of the field, with the left (23.5%), central (23.7%), and right (22.1%) channels all showing similar, moderate rates characterized by yellow and light green hues.
+
+The highest ratio of Leverkusen's traps occurs in the attacking third (A3), particularly out on the flanks. The deepest green patches, representing the highest smoothed trap rates, cluster heavily in the advanced wide areas, yielding zonal averages of 39% on the left (A3_L) and 36% on the right (A3_R). The central attacking zone (A3_C) is slightly lower at 31%, likely due to the higher density of defending players in the middle of the pitch. Ultimately, this geographic breakdown highlights a clear tactical design: Leverkusen tends to enclose the opposition out wide, resulting in aggressive pressing traps deep in the opponent's half.
 
 ---
 
-# Main Analysis: The Comeback Shift (DiD)
+# The Comeback Shift: A DiD Approach
 
-**Design:** A 2×2 Difference-in-Differences estimator exploiting two natural
-variation sources within the same team and season:
+In the previous section, we showed how Leverkusen's overall spatial pressing patterns adapt to the opponent's quality. We now turn our attention to what happens within any given game, and we pose the question of whether the counterpressing trends change when facing different game conditions. To do so, we employ a Difference-in-Differences approach exploiting two natural variation sources within the same team and season:
 
 | Dimension | Treatment | Control |
 |---|---|---|
 | Score state | Losing | Not Losing |
 | Match timing | After 70' | Before 70' |
 
-**Treatment cell:** Losing **and** after minute 70.
+Therefore, the treatment cell is both to be losing, and to be past the 70 minute mark.
 
-**Outcome:** `location.x`, the x-coordinate of each press event (press height).
-Higher values indicate the team is pressing further up the pitch, which signals more aggressiveness.
-
-**DiD estimator:**
+The DiD estimator is the following:
 $$\hat{\beta}_{DiD} = \underbrace{(\bar{X}_{Losing,Late} - \bar{X}_{Losing,Early})}_{\text{change when losing}} - \underbrace{(\bar{X}_{NotLosing,Late} - \bar{X}_{NotLosing,Early})}_{\text{natural time trend}}$$
 
 ## Score State Reconstruction
 
 We reconstruct the running score at the moment of each press event by
-cumulating goal events from StatsBomb's event stream.
+accumulating goal events from StatsBomb's event stream.
 
 ```{r score-reconstruction}
 # Extract all goal events from the full season
-# In StatsBomb: goals are Shot events with shot.outcome.name == "Goal"
+# Goals are Shot events with shot.outcome.name == "Goal"
 goals <- events %>%
   filter(
-    type.name         == "Shot",
+    type.name == "Shot",
     shot.outcome.name == "Goal",
     !is.na(minute)
   ) %>%
   select(match_id, period, minute, second, team.name) %>%
   mutate(
-    lev_goal  = team.name == "Bayer Leverkusen",
-    opp_goal  = team.name != "Bayer Leverkusen",
+    lev_goal = team.name == "Bayer Leverkusen",
+    opp_goal = team.name != "Bayer Leverkusen",
     time_mins = minute + second / 60
   ) %>%
   arrange(match_id, period, minute, second)
 
 cat("Total goals in dataset:", nrow(goals), "\n")
 
-# For each press event, find how many goals each team scored BEFORE that moment.
+# For each press event, find how many goals each team scored before that moment.
 # We process match-by-match using group_modify to avoid cross-match contamination.
 press_with_score <- press_clean %>%
   select(id, match_id, minute, second,
@@ -747,7 +748,7 @@ press_with_score <- press_clean %>%
          match_date, opponent) %>%
   mutate(time_mins = minute + second / 60)
 
-cat("Joining score state to press events (per-match rolling join)...\n")
+cat("Joining score state to press events...\n")
 
 press_scored <- press_with_score %>%
   group_by(match_id) %>%
@@ -755,10 +756,10 @@ press_scored <- press_with_score %>%
     match_goals <- goals %>% filter(match_id == .y$match_id)
 
     if (nrow(match_goals) == 0) {
-      # No goals in this match — score is always 0-0
+      # No goals in this match
       .x %>% mutate(lev_goals = 0L, opp_goals = 0L, goal_diff = 0L)
     } else {
-      # For each press: count goals scored strictly BEFORE this time
+      # Count goals scored before this time
       .x %>%
         rowwise() %>%
         mutate(
@@ -776,61 +777,61 @@ press_scored <- press_with_score %>%
 cat("Press events with score state:", nrow(press_scored), "\n")
 ```
 
-## Build DiD Dataset
+## Building the DiD Dataset
 
 ```{r did-dataset}
 # Create the DiD treatment variables:
-#   is_losing:    Leverkusen are behind at the moment of the press
-#   is_late:      press occurs after the 70-minute threshold
-#   comeback_mode: the treatment cell (losing AND late)
+#   is_losing: Leverkusen are behind at the moment of the press
+#   is_late: press occurs after the 70-minute threshold
+#   comeback_mode: the treatment cell (losing and late)
 LATE_THRESHOLD <- 70
 
 press_did <- press_scored %>%
   mutate(
-    goal_diff     = as.integer(goal_diff),
-    is_losing     = goal_diff < 0,
-    is_late       = minute > LATE_THRESHOLD,
+    goal_diff = as.integer(goal_diff),
+    is_losing = goal_diff < 0,
+    is_late = minute > LATE_THRESHOLD,
     comeback_mode = is_losing & is_late
   )
 
-# Summary table of the 2×2 DiD cells
-cat("=== DiD Cell Summary ===\n")
+# Summary table of the DiD cells
+cat("--- DiD Cell Summary ---\n")
 press_did %>%
   group_by(is_late, is_losing) %>%
   summarise(
-    n_presses       = n(),
+    n_presses = n(),
     mean_location_x = round(mean(location.x, na.rm = TRUE), 2),
-    sd_location_x   = round(sd(location.x,   na.rm = TRUE), 2),
-    cp_rate         = round(mean(counterpress_flag) * 100, 1),
+    sd_location_x = round(sd(location.x, na.rm = TRUE), 2),
+    cp_rate = round(mean(counterpress_flag) * 100, 1),
     .groups = "drop"
   ) %>%
   mutate(
-    period = ifelse(is_late,   "Late (>70')", "Early (≤70')"),
-    score  = ifelse(is_losing, "Losing",      "Not Losing")
+    period = ifelse(is_late, "Late (>70')", "Early (≤70')"),
+    score = ifelse(is_losing, "Losing", "Not Losing")
   ) %>%
   select(score, period, n_presses, mean_location_x, sd_location_x, cp_rate)
 ```
 
 ```{r did-naive}
-# Compute the naive (arithmetic) DiD estimate before running the regression
+# Compute the simple DiD estimate before running the regression
 cell_means <- press_did %>%
   group_by(is_late, is_losing) %>%
   summarise(mean_x = mean(location.x, na.rm = TRUE), .groups = "drop")
 
-early_losing    <- cell_means %>% filter(!is_late,  is_losing) %>% pull(mean_x)
-late_losing     <- cell_means %>% filter( is_late,  is_losing) %>% pull(mean_x)
+early_losing <- cell_means %>% filter(!is_late, is_losing) %>% pull(mean_x)
+late_losing <- cell_means %>% filter(is_late, is_losing) %>% pull(mean_x)
 early_notlosing <- cell_means %>% filter(!is_late, !is_losing) %>% pull(mean_x)
-late_notlosing  <- cell_means %>% filter( is_late, !is_losing) %>% pull(mean_x)
+late_notlosing <- cell_means %>% filter(is_late, !is_losing) %>% pull(mean_x)
 
-diff_losing    <- late_losing    - early_losing
+diff_losing <- late_losing - early_losing
 diff_notlosing <- late_notlosing - early_notlosing
-did_estimate   <- diff_losing    - diff_notlosing
+did_estimate <- diff_losing - diff_notlosing
 
 cat(sprintf(
-  "--- Naive DiD Calculation ---\n
-  Early Losing:      %.2f m\n  Late Losing:       %.2f m\n  Δ Losing:         +%.2f m\n
+  "--- Simple DiD Calculation ---\n
+  Early Losing:      %.2f m\n  Late Losing:       %.2f m\n  Δ Losing:          +%.2f m\n
   Early Not Losing:  %.2f m\n  Late Not Losing:   %.2f m\n  Δ Not Losing:      %.2f m\n
-  DiD Estimate:      +%.2f m  ← the Comeback Shift\n",
+  DiD Estimate:      +%.2f m",
   early_losing, late_losing, diff_losing,
   early_notlosing, late_notlosing, diff_notlosing,
   did_estimate
@@ -840,7 +841,7 @@ cat(sprintf(
 ## DiD Regression Models
 
 ```{r did-regression}
-# Model 1 — Baseline DiD
+# Model 1: Baseline DiD
 # Y = location.x (press height)
 # β3 is our estimator: does losing after 70' cause a forward shift?
 
@@ -849,14 +850,14 @@ model_base <- lm(
   data = press_did
 )
 
-cat("=== Model 1: Baseline DiD ===\n")
+cat("--- Model 1: Baseline DiD ---\n")
 tidy(model_base, conf.int = TRUE) %>%
   mutate(
     term = recode(term,
-      "(Intercept)"           = "Intercept (Early, Not Losing)",
-      "is_lateTRUE"           = "β1: Late (>70')",
-      "is_losingTRUE"         = "β2: Losing",
-      "is_lateTRUE:is_losingTRUE" = "β3: DiD (Late × Losing) ← Comeback Shift"
+      "(Intercept)" = "Intercept (Early, Not Losing)",
+      "is_lateTRUE" = "β1: Late (>70')",
+      "is_losingTRUE" = "β2: Losing",
+      "is_lateTRUE:is_losingTRUE" = "β3: DiD (Late × Losing)"
     )
   ) %>%
   select(term, estimate, std.error, p.value, conf.low, conf.high) %>%
@@ -864,7 +865,7 @@ tidy(model_base, conf.int = TRUE) %>%
 ```
 
 ```{r did-elo-model}
-# Model 2 — DiD × Opponent Quality Interaction
+# Model 2: DiD × Opponent Quality Interaction
 # Does the comeback shift intensify against stronger opponents?
 # Reference level: Weak opponent
 
@@ -877,10 +878,26 @@ model_elo <- lm(
   data = press_did_elo
 )
 
-cat("=== Model 2: DiD × ELO Tier ===\n")
+cat("--- Model 2: DiD × ELO Tier ---\n")
 tidy(model_elo, conf.int = TRUE) %>%
   select(term, estimate, std.error, p.value) %>%
-  mutate(across(where(is.numeric), ~ round(.x, 3)))
+  mutate(across(where(is.numeric), ~ round(.x, 3))) %>%
+  mutate(term = recode(term,
+          "(Intercept)" = "Intercept (Early, Not Losing, Weak Opponent)",
+          "is_lateTRUE" = "β1: Late (>70'), Weak Opponent",
+          "is_losingTRUE" = "β2: Losing, Weak Opponent",
+          "elo_tierTop opponent" = "β3: Top Opponent",
+          "elo_tierMid opponent" = "β4: Mid Opponent",
+          "is_lateTRUE:is_losingTRUE" = "β5: Late, Losing",
+          "is_lateTRUE:elo_tierTop opponent" = "β6: Late, Top Opponent",
+          "is_lateTRUE:elo_tierMid opponent" = "β7: Late, Mid Opponent",
+          "is_losingTRUE:elo_tierTop opponent" = "β8: Losing, Top Opponent",
+          "is_losingTRUE:elo_tierMid opponent" = "β9: Losing, Mid Opponent",
+          "is_lateTRUE:is_losingTRUE:elo_tierTop opponent" = 
+            "β10: Late, Losing, Top Opponent",
+          "is_lateTRUE:is_losingTRUE:elo_tierMid opponent" = 
+            "β11: Late, Losing, Mid Opponent"
+          ))
 ```
 
 ```{r did-by-tier-table}
@@ -888,21 +905,22 @@ tidy(model_elo, conf.int = TRUE) %>%
 # Complements the regression by showing the raw DiD in each tier
 did_by_tier <- press_did_elo %>%
   group_by(elo_tier, is_late, is_losing) %>%
-  summarise(mean_x = mean(location.x, na.rm = TRUE), n = n(), .groups = "drop") %>%
+  summarise(mean_x = mean(location.x, na.rm = TRUE), 
+            n = n(), .groups = "drop") %>%
   pivot_wider(
-    names_from  = c(is_late, is_losing),
+    names_from = c(is_late, is_losing),
     values_from = c(mean_x, n),
-    names_sep   = "_"
+    names_sep = "_"
   ) %>%
   mutate(
-    diff_losing    = round(mean_x_TRUE_TRUE  - mean_x_FALSE_TRUE,  2),
+    diff_losing = round(mean_x_TRUE_TRUE  - mean_x_FALSE_TRUE,  2),
     diff_notlosing = round(mean_x_TRUE_FALSE - mean_x_FALSE_FALSE, 2),
-    did_estimate   = round(diff_losing - diff_notlosing, 2)
+    did_estimate = round(diff_losing - diff_notlosing, 2)
   ) %>%
   select(elo_tier, diff_losing, diff_notlosing, did_estimate,
          n_late_losing = n_TRUE_TRUE, n_early_losing = n_FALSE_TRUE)
 
-cat("=== DiD Estimate by Opponent Quality ===\n")
+cat("--- DiD Estimate by Opponent Quality ---\n")
 print(did_by_tier)
 ```
 
@@ -913,93 +931,97 @@ print(did_by_tier)
 theme_paper <- function() {
   theme_minimal(base_size = 12) +
     theme(
-      plot.title       = element_text(face = "bold", hjust = 0.5, size = 14),
-      plot.subtitle    = element_text(hjust = 0.5, colour = "grey40", size = 10),
+      plot.title = element_text(face = "bold", hjust = 0.5, size = 14),
+      plot.subtitle = element_text(hjust = 0.5, colour = "grey40", size = 10),
       panel.grid.minor = element_blank(),
-      plot.background  = element_rect(fill = "white", color = NA),
+      plot.background = element_rect(fill = "white", color = NA),
       panel.background = element_rect(fill = "white", color = NA),
-      legend.position  = "top"
+      legend.position = "top"
     )
 }
 
-col_losing    <- "#d6604d"   # red   — Losing group
-col_notlosing <- "#2166ac"   # blue  — Not Losing group
+col_losing <- "#d6604d"  
+col_notlosing <- "#2166ac" 
 ```
 
 ```{r did-pitchmap, fig.height=5}
-# Figure A: Pitch map — KDE for each of the 4 DiD cells
-# Shows WHERE on the pitch the comeback shift happens spatially
+# Figure A: Pitch map, KDE for each of the 4 DiD cells
+# Shows where on the pitch the comeback shift happens spatially
 
 fig_A <- press_did %>%
   filter(!is.na(is_late), !is.na(is_losing)) %>%
   mutate(
     did_group = case_when(
-      !is_losing & !is_late ~ "Not Losing — Early (≤70')",
-      !is_losing &  is_late ~ "Not Losing — Late (>70')",
-       is_losing & !is_late ~ "Losing — Early (≤70')",
-       is_losing &  is_late ~ "Losing — Late (>70') ★"
+      !is_losing & !is_late ~ "Not Losing x Early (≤70')",
+      !is_losing & is_late ~ "Not Losing x Late (>70')",
+       is_losing & !is_late ~ "Losing x Early (≤70')",
+       is_losing & is_late ~ "Losing x Late (>70') *"
     ),
     did_group = factor(did_group, levels = c(
-      "Not Losing — Early (≤70')", "Not Losing — Late (>70')",
-      "Losing — Early (≤70')",     "Losing — Late (>70') ★"
+      "Not Losing x Early (≤70')", "Not Losing x Late (>70')",
+      "Losing x Early (≤70')", "Losing x Late (>70') *"
     ))
   ) %>%
   ggplot(aes(x = location.x, y = location.y)) +
   stat_density_2d(
     aes(fill = after_stat(ndensity)),
-    geom    = "raster",
+    geom = "raster",
     contour = FALSE,
-    n       = 150,
-    h       = c(15, 15)
+    n = 150,
+    h = c(15, 15)
   ) +
   scale_fill_viridis_c(option = "magma", direction = -1, begin = 0.05,
                        name = "Density") +
-  annotate("rect", xmin=-Inf,xmax=Inf,ymin=-Inf,ymax=0,   fill="white",color=NA) +
-  annotate("rect", xmin=-Inf,xmax=Inf,ymin=80,  ymax=Inf, fill="white",color=NA) +
-  annotate("rect", xmin=-Inf,xmax=0,  ymin=-Inf,ymax=Inf, fill="white",color=NA) +
-  annotate("rect", xmin=120, xmax=Inf,ymin=-Inf,ymax=Inf, fill="white",color=NA) +
+  annotate("rect", xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=0, fill="white", 
+           color=NA) +
+  annotate("rect", xmin=-Inf, xmax=Inf, ymin=80, ymax=Inf, fill="white", 
+           color=NA) +
+  annotate("rect", xmin=-Inf, xmax=0, ymin=-Inf, ymax=Inf, fill="white", 
+           color=NA) +
+  annotate("rect", xmin=120, xmax=Inf, ymin=-Inf, ymax=Inf, fill="white", 
+           color=NA) +
   annotate_pitch(dimensions = pitch_statsbomb, colour = "grey30", fill = NA) +
   coord_fixed(xlim = c(-2, 122), ylim = c(-5, 83), expand = FALSE) +
   facet_wrap(~ did_group, ncol = 4) +
   labs(
-    title    = "A) Press Location Maps Across DiD Cells",
-    subtitle = "★ = treatment cell (Losing after 70') | Forward shift visible as rightward density"
+    title = "A) Counterpress Location Maps Across DiD Cells",
+    subtitle = "* = treatment cell (Losing after 70')"
   ) +
   theme_pitch() +
   theme(
-    plot.title       = element_text(face = "bold", size = 13, hjust = 0.5),
-    plot.subtitle    = element_text(size = 10, hjust = 0.5, colour = "grey40"),
-    strip.text       = element_text(face = "bold", size = 10),
-    plot.background  = element_rect(fill = "white", color = NA),
+    plot.title = element_text(face = "bold", size = 13, hjust = 0.5),
+    plot.subtitle = element_text(size = 10, hjust = 0.5, colour = "grey40"),
+    strip.text = element_text(face = "bold", size = 10),
+    plot.background = element_rect(fill = "white", color = NA),
     panel.background = element_rect(fill = "white", color = NA)
   )
 
 print(fig_A)
 ggsave("fig4_did_pitchmap.png", plot = fig_A, width = 18, height = 5, dpi = 300)
 ```
-The visualization above employs a Difference-in-Differences (DiD) framework to map how Bayer Leverkusen’s pressing locations adapt to game state and time remaining. The panels are split into baseline and conditional states. In the "Not Losing" scenarios, we see a clear temporal shift: early in the match (far left), pressing is broadly distributed, but late in the match (second panel), the density drops significantly deeper into the midfield and defensive half, likely reflecting a conservative posture to protect a lead or draw. Conversely, when "Losing" early in the match (third panel), there is already a visible increase in urgency, with a prominent dark density node appearing in the opponent's penalty area.
 
-The focal point of the analysis is the far-right panel, marked as the "treatment cell," which isolates the specific condition of losing late in a match (after the 70th minute). Here, a dramatic spatial shift occurs. The pressing footprint almost completely vacates Leverkusen's own defensive half, shifting sharply to the right to form intense, high-density clusters around the opponent's penalty area and advanced flanks. This clearly illustrates their tactical escalation: when chasing a game in the final twenty minutes, Leverkusen doesn't just increase their volume of pressing; they execute an extreme, coordinated forward shift to suffocate the opposition deep in their own territory.
+The visualization above employs a Difference-in-Differences (DiD) framework to map how Bayer Leverkusen’s pressing locations adapt to game state and time remaining. The panels are split into baseline and conditional states. In the "Not Losing" scenarios, we see a clear temporal shift: early in the match (far left), pressing is broadly distributed, but late in the match (second panel), the density drops significantly deeper into the midfield and defensive half, likely reflecting a conservative posture to protect a lead or draw. Conversely, when "Losing" early in the match (third panel), there is already a visible increase in urgency, with a prominent dark density cluster appearing in the opponent's penalty area.
+
+The focal point of the analysis is the far-right panel, marked as the "treatment cell," which isolates the specific condition of losing late in a match (after the 70th minute). In this scenario, the pressing footprint almost completely clears out Leverkusen's own defensive half, shifting sharply to the right to form high-density clusters around the opponent's penalty area and advanced flanks. This illustrates the team's tactical escalation: when chasing a game in the final twenty minutes, Leverkusen executes a coordinated forward shift to overwhelm the opposition deep in their own territory.
 
 ```{r did-estimator, fig.height=6}
-# Figure B: DiD estimator plot — cell means with parallel trend counterfactual
-# This is the standard econometric summary visual for a 2×2 DiD design
+# Figure B: DiD estimator plot
 
 cell_means_ci <- press_did %>%
   filter(!is.na(is_late), !is.na(is_losing)) %>%
   group_by(is_late, is_losing) %>%
   summarise(
     mean_x = mean(location.x, na.rm = TRUE),
-    se_x   = sd(location.x,   na.rm = TRUE) / sqrt(n()),
-    n      = n(),
+    se_x = sd(location.x, na.rm = TRUE) / sqrt(n()),
+    n = n(),
     .groups = "drop"
   ) %>%
   mutate(
-    period   = ifelse(is_late,   "Late\n(>70')", "Early\n(≤70')"),
+    period = ifelse(is_late, "Late\n(>70')", "Early\n(≤70')"),
     period_n = ifelse(is_late, 1, 0),
-    score    = ifelse(is_losing, "Losing",       "Not Losing"),
-    ci_lo    = mean_x - 1.96 * se_x,
-    ci_hi    = mean_x + 1.96 * se_x
+    score = ifelse(is_losing, "Losing", "Not Losing"),
+    ci_lo = mean_x - 1.96 * se_x,
+    ci_hi = mean_x + 1.96 * se_x
   )
 
 # Late-period gap for DiD bracket annotation
@@ -1009,10 +1031,11 @@ did_bracket <- cell_means_ci %>%
   pivot_wider(names_from = is_losing, values_from = mean_x) %>%
   rename(losing = `TRUE`, notlosing = `FALSE`) %>%
   mutate(
-    mid_y     = (losing + notlosing) / 2,
+    mid_y = (losing + notlosing) / 2,
     did_label = sprintf("DiD = +%.1fm\n(p = %.3f)",
                         did_estimate,
-                        coef(summary(model_base))["is_lateTRUE:is_losingTRUE", "Pr(>|t|)"])
+                        coef(summary(model_base))["is_lateTRUE:is_losingTRUE", 
+                                                  "Pr(>|t|)"])
   )
 
 fig_B <- ggplot(cell_means_ci,
@@ -1029,7 +1052,8 @@ fig_B <- ggplot(cell_means_ci,
            x = 1.12, xend = 1.12,
            y = did_bracket$notlosing, yend = did_bracket$losing,
            colour = "grey20", linewidth = 1.0,
-           arrow  = arrow(length = unit(0.2, "cm"), ends = "both", type = "closed")) +
+           arrow = arrow(length = unit(0.2, "cm"), ends = "both", 
+                         type = "closed")) +
   annotate("text",
            x = 1.17, y = did_bracket$mid_y,
            label = did_bracket$did_label,
@@ -1037,7 +1061,7 @@ fig_B <- ggplot(cell_means_ci,
            fontface = "bold", lineheight = 0.9) +
   scale_colour_manual(
     values = c("Losing" = col_losing, "Not Losing" = col_notlosing),
-    name   = "Score state"
+    name = "Score state"
   ) +
   scale_size_continuous(range = c(4, 9), guide = "none") +
   scale_x_continuous(
@@ -1046,19 +1070,21 @@ fig_B <- ggplot(cell_means_ci,
     expand = expansion(add = c(0.15, 0.4))
   ) +
   labs(
-    title    = "B) DiD Estimator: The Comeback Shift",
-    subtitle = "Treatment effect = gap between Losing line and parallel trend counterfactual",
-    x        = NULL,
-    y        = "Mean Press Height (m from own goal)"
+    title = "B) DiD Estimator: The Comeback Shift",
+    subtitle = "Treatment effect = gap between Losing line and parallel trend 
+                counterfactual",
+    x = NULL,
+    y = "Mean Press Height (m from own goal)"
   ) +
   theme_paper()
 
 print(fig_B)
 ggsave("fig5_did_estimator.png", plot = fig_B, width = 8, height = 6, dpi = 300)
 ```
-This visualization quantifies Bayer Leverkusen’s spatial tactical adjustments using a formal Difference-in-Differences (DiD) estimator, mapping the mean pressing height (in meters from their own goal) against game state and time. The blue "Not Losing" line establishes our baseline parallel trend: when drawing or winning, Leverkusen's average pressing height naturally regresses from roughly 64.5 meters in the first 70 minutes down to about 61 meters late in the game, reflecting a standard, more conservative posture to see out a favorable result. Conversely, the red "Losing" line demonstrates an entirely different trajectory. Even early in a match, facing a deficit prompts a higher average engagement line (around 67.5 meters), but rather than dropping off as the game wears on, this intensity actually scales upward.
 
-The core finding is captured by the "Comeback Shift" on the right side of the plot. By comparing the actual late-game losing press height (nearly 70 meters) against the expected counterfactual—where the red line would have hypothetically ended had it followed the same downward slope as the blue line—the model isolates a specific treatment effect of +6.2 meters. This confirms that Leverkusen enacts a massive, coordinated push up the pitch when chasing a late equalizer. It is worth noting, however, that the large error bars in the late-losing scenario (n=91) yield a p-value of 0.104. While this falls just outside traditional thresholds for statistical significance, the sheer width of the confidence interval tells its own story: Bayer Leverkusen spent so little time losing late in matches during their historic unbeaten season that the sample size naturally restricts the statistical power, even when the tactical shift is visually profound.
+This visualization quantifies Bayer Leverkusen’s spatial tactical adjustments using a formal Difference-in-Differences (DiD) estimator, mapping the mean pressing height (in meters from their own goal) against game state and time. The blue "Not Losing" line establishes our baseline parallel trend: when drawing or winning, Leverkusen's average pressing height naturally regresses from roughly 64.5 meters in the first 70 minutes down to about 61 meters late in the game, reflecting a more conservative posture to see out a favorable result. Conversely, the red "Losing" line demonstrates an entirely different trajectory. Even early in a match, facing unfavorable scores leads to a higher average pressure line (around 67.5 meters), but rather than dropping off as the game wears on, this intensity actually scales upward.
+
+The core finding is captured by the "Comeback Shift" on the right side of the plot. By comparing the actual late-game losing press height (nearly 70 meters) against the expected counterfactual, where the red line would have hypothetically ended had it followed the same downward slope as the blue line, the model isolates a specific treatment effect of +6.2 meters. This confirms that Leverkusen executes a coordinated push up the pitch when chasing a late equalizer. It is worth noting, however, that the large error bars in the late-losing scenario (n=91) yield a p-value of 0.104. While this falls just outside traditional thresholds for statistical significance, the width of the confidence interval might tell us that Bayer Leverkusen spent so little time losing late in matches during their historic unbeaten season that the sample size naturally restricts the statistical power, even when the tactical shift is noticeable.
 
 ```{r did-timeline, fig.height=6}
 # Figure C: Minute-by-minute press height trajectory
@@ -1067,14 +1093,14 @@ The core finding is captured by the "Comeback Shift" on the right side of the pl
 press_timeline <- press_did %>%
   filter(!is.na(is_losing), minute <= 95) %>%
   mutate(
-    minute_bin  = floor(minute / 5) * 5 + 2.5,  # 5-minute bins
+    minute_bin = floor(minute / 5) * 5 + 2.5,  # 5-minute bins
     score_label = ifelse(is_losing, "Losing", "Not Losing")
   ) %>%
   group_by(minute_bin, score_label) %>%
   summarise(
     mean_x = mean(location.x, na.rm = TRUE),
-    se_x   = sd(location.x,   na.rm = TRUE) / sqrt(n()),
-    n      = n(),
+    se_x = sd(location.x, na.rm = TRUE) / sqrt(n()),
+    n = n(),
     .groups = "drop"
   ) %>%
   filter(n >= 5)   # drop bins with too few observations for reliable SE
@@ -1087,69 +1113,69 @@ fig_C <- ggplot(press_timeline,
               alpha = 0.15, colour = NA) +
   geom_smooth(method = "loess", span = 0.4, se = FALSE, linewidth = 1.4) +
   geom_point(aes(size = n), alpha = 0.6) +
-  # Highlight the treatment window
   annotate("rect", xmin = 70, xmax = 95, ymin = -Inf, ymax = Inf,
            fill = "gold", alpha = 0.08) +
   annotate("text", x = 82.5, y = 105,
            label = "Treatment\nwindow", size = 3.2,
            colour = "grey40", fontface = "italic", hjust = 0.5) +
-  # Reference lines
-  geom_vline(xintercept = 45, colour = "grey60", linetype = "dotted", linewidth = 0.8) +
-  geom_vline(xintercept = 70, colour = "grey40", linetype = "dashed", linewidth = 0.8) +
+  geom_vline(xintercept = 45, colour = "grey60", linetype = "dotted", 
+             linewidth = 0.8) +
+  geom_vline(xintercept = 70, colour = "grey40", linetype = "dashed", 
+             linewidth = 0.8) +
   annotate("text", x = 45.5, y = 105, label = "HT", size = 3, colour = "grey50") +
   annotate("text", x = 70.5, y = 105, label = "70'", size = 3, colour = "grey40") +
   scale_colour_manual(
     values = c("Losing" = col_losing, "Not Losing" = col_notlosing),
-    name   = "Score state"
+    name = "Score state"
   ) +
   scale_fill_manual(
     values = c("Losing" = col_losing, "Not Losing" = col_notlosing),
-    guide  = "none"
+    guide = "none"
   ) +
   scale_size_continuous(range = c(1.5, 4), guide = "none") +
   scale_x_continuous(breaks = seq(0, 95, 10)) +
   scale_y_continuous(limits = c(40, 110)) +
   labs(
-    title    = "C) Press Height Trajectory Through the Match",
-    subtitle = "5-minute bins | LOESS smooth | Shaded = treatment window (losing after 70')",
-    x        = "Match Minute",
-    y        = "Mean Press Height (m)"
+    title = "C) Press Height Trajectory Through the Match",
+    subtitle = "5-minute bins | Shaded = treatment window (losing after 70')",
+    x = "Match Minute",
+    y = "Mean Press Height (m)"
   ) +
   theme_paper()
 
 print(fig_C)
 ggsave("fig6_did_timeline.png", plot = fig_C, width = 9, height = 6, dpi = 300)
 ```
-Following standard practice in within-game DiD designs, we restrict the pre-treatment window to minutes 30–70 to exclude the tactically unstable opening phase of matches, during which score shocks produce mechanical pressing reactions unrelated to sustained tactical adjustment. Visual inspection of Figure C confirms that parallel trends hold in this window.
 
-Once the match crosses the 70-minute threshold into the treatment window, the trajectories diverge dramatically. The baseline "Not Losing" state remains remarkably stable, hovering consistently just above the 60-meter mark as the team manages the game. In stark contrast, the "Losing" trajectory exhibits a sharp, acute spike, surging to a peak mean pressing height of nearly 80 meters before dropping off in stoppage time. This visualizes the aggressive tactical escalation perfectly: rather than a gradual upward drift, Leverkusen executes a sudden, coordinated spatial shift to pin the opponent deep in their own half. The noticeably wide confidence bands surrounding this late-game losing surge further reinforce our earlier statistical caveat, visually representing the rarity of this game state during their historic unbeaten campaign.
+We restrict the pre-treatment window to minutes 30–70 to exclude the tactically unstable opening phase of matches, during which score shocks produce pressing reactions unrelated to any tactical adjustment. Visual inspection of Figure C confirms that parallel trends hold in this window.
 
+Once the match crosses the 70-minute threshold into the treatment window, the trajectories diverge dramatically. The baseline "Not Losing" state remains remarkably stable, hovering consistently just above the 60-meter mark as the team handles the game. In contrast, the "Losing" trajectory exhibits a sharp spike, surging to a peak mean pressing height of nearly 80 meters before dropping off in stoppage time. This visualizes the aggressive tactical escalation perfectly: rather than a gradual upward drift, Leverkusen executes a sudden spatial shift to pin the opponent deep in their own half. The wide confidence bands surrounding this late-game losing surge further reinforce our earlier statistical caveat, visually representing the rarity of this game state during their historic unbeaten campaign.
 
 ```{r did-by-elo, fig.height=6}
-# Figure D: DiD by opponent quality — parallel trends faceted by ELO tier
+# Figure D: DiD by opponent quality, parallel trends faceted by ELO tier
 # Tests whether the comeback shift is stronger against better teams
 
 plot_did_data <- press_did_elo %>%
   group_by(elo_tier, is_late, is_losing) %>%
   summarise(
     mean_x = mean(location.x, na.rm = TRUE),
-    se_x   = sd(location.x,   na.rm = TRUE) / sqrt(n()),
-    n      = n(),
+    se_x = sd(location.x, na.rm = TRUE) / sqrt(n()),
+    n = n(),
     .groups = "drop"
   ) %>%
   mutate(
-    period   = ifelse(is_late,   "Late\n(>70')", "Early\n(≤70')"),
-    score    = ifelse(is_losing, "Losing",       "Not Losing"),
+    period = ifelse(is_late, "Late\n(>70')", "Early\n(≤70')"),
+    score = ifelse(is_losing, "Losing", "Not Losing"),
     period_n = ifelse(is_late, 1, 0)
   )
 
-# Prepare DiD annotation per tier (join estimates from did_by_tier table above)
+# Prepare DiD annotation per tier
 tier_did_labels <- did_by_tier %>%
   rename(elo_tier_label = elo_tier) %>%
   mutate(
     elo_tier = factor(elo_tier_label,
                       levels = c("Top opponent", "Mid opponent", "Weak opponent")),
-    label    = paste0("DiD = +", did_estimate, "m")
+    label = paste0("DiD = +", did_estimate, "m")
   )
 
 fig_D <- ggplot(plot_did_data,
@@ -1161,7 +1187,7 @@ fig_D <- ggplot(plot_did_data,
                 width = 0.05, linewidth = 0.8) +
   scale_colour_manual(
     values = c("Losing" = col_losing, "Not Losing" = col_notlosing),
-    name   = "Score state"
+    name = "Score state"
   ) +
   scale_size_continuous(range = c(3, 7), guide = "none") +
   scale_x_continuous(
@@ -1171,69 +1197,61 @@ fig_D <- ggplot(plot_did_data,
   ) +
   facet_wrap(~ elo_tier, ncol = 3) +
   labs(
-    title    = "D) The Comeback Shift by Opponent Quality",
-    subtitle = "DiD = (Losing Late − Losing Early) − (Not Losing Late − Not Losing Early)",
-    x        = NULL,
-    y        = "Average Press Height (m from own goal)"
+    title = "D) The Comeback Shift by Opponent Quality",
+    x = NULL,
+    y = "Average Press Height (m from own goal)"
   ) +
   theme_paper() +
   theme(
-    strip.text       = element_text(face = "bold", size = 12),
+    strip.text = element_text(face = "bold", size = 12),
     strip.background = element_rect(fill = "grey92", colour = NA)
   )
 
 print(fig_D)
 ggsave("fig7_did_by_tier.png", plot = fig_D, width = 14, height = 6, dpi = 300)
 ```
-This visualization unpacks the aggregate "Comeback Shift" by conditioning the Difference-in-Differences (DiD) model on opponent quality. The most immediate and striking observation occurs in the left panel against weak opponents: the complete absence of the red "Losing" trajectory. This visually captures a remarkable fact of Bayer Leverkusen’s unbeaten season, as they never spent a single recorded minute losing to lower-tier opposition late in matches. Consequently, a comeback shift is impossible to calculate here. When not losing against these teams, their baseline pressing height simply remains flat and dominant at around 67 meters, regardless of the match phase.
 
-The center panel reveals a more pragmatic tactical approach when facing elite opposition. Leverkusen does not execute a reckless forward push when chasing a game against top teams; rather, their late-game "Losing" press height stays relatively flat at roughly 65 meters. However, because their baseline "Not Losing" posture drops significantly late in these grueling matches—falling to approximately 53 meters as they presumably defend deeper to protect points—a relative treatment effect still emerges. Against top-tier opponents, their comeback response is characterized by a stubborn refusal to drop their lines, rather than an all-out offensive surge.
+This visualization unpacks the aggregate "Comeback Shift" by conditioning the Difference-in-Differences (DiD) model on opponent quality. The most immediate observation occurs in the left panel against weak opponents: the complete absence of the red "Losing" trajectory. This visually captures a remarkable fact of Bayer Leverkusen’s unbeaten season, as they never spent a single recorded minute losing to weak opponents late in matches. Consequently, a comeback shift is impossible to calculate here. When not losing against these teams, their baseline pressing height simply remains flat and dominant at around 67 meters, regardless of the match phase.
 
-Finally, the right panel isolates the true engine behind Leverkusen's aggregate tactical shift. Against mid-tier teams, the "Losing" trajectory is incredibly aggressive, surging from an already high 78 meters early in the match to an extreme 84 meters late in the game. This demonstrates that their famous late-game pressing surges were specifically unleashed against middle-of-the-pack teams, where they clearly felt confident committing maximum numbers forward to suffocate the opposition and salvage a result. However, the wide error bars surrounding this final estimate serve as a persistent reminder of the small sample size, reflecting just how rarely this dominant side found themselves chasing late-game deficits.
+The center panel reveals a more practical tactical approach when facing elite opposition. Leverkusen does not execute a reckless forward push when chasing a game against top teams; rather, their late-game "Losing" press height stays relatively flat at roughly 65 meters. However, because their baseline "Not Losing" posture drops significantly late in these matches, falling to approximately 53 meters as they presumably defend deeper to protect points, a relative treatment effect still emerges. Against top-tier opponents, their comeback response is characterized by a refusal to drop their lines, rather than a complete offensive surge.
+
+Finally, the right panel isolates the true driver behind Leverkusen's aggregate tactical shift. Against mid-tier teams, the "Losing" trajectory is overly aggressive, surging from an already high 78 meters early in the match to an extreme 84 meters late in the game. This demonstrates that their famous late-game pressing surges were specifically unleashed against medium-level teams, where they likely felt confident committing maximum numbers forward to enclose the opposition and achieve an acceptable result. However, the wide error bars surrounding this final estimate serve as a reminder of the small sample size, reflecting just how rarely this team found themselves chasing late-game deficits.
 
 ```{r did-robustness}
 ## DiD Robustness: Restricted Pre-Treatment Window (Minutes 30–70)
 
-# Theoretical motivation: the first 30 minutes of a match are tactically
-# unstable — teams are still reading the game and early score shocks produce
-# mechanical pressing reactions unrelated to sustained tactical adjustment.
-# We restrict the pre-treatment window to minutes 30–70 to ensure the
-# parallel trends assumption holds in the comparison period.
-
 # Build the restricted DiD dataset:
-#   - Pre-treatment window:  minutes 30–70  (replaces 0–70)
-#   - Treatment window:      minutes > 70   (unchanged)
+#   - Pre-treatment window: minutes 30–70 (replaces 0–70)
+#   - Treatment window: minutes > 70 (unchanged)
 #   - Events before minute 30 are dropped entirely
 
-LATE_THRESHOLD   <- 70
-EARLY_LOW_BOUND  <- 30   # drop tactically unstable opening phase
+LATE_THRESHOLD <- 70
+EARLY_LOW_BOUND <- 30 
 
 press_did_restricted <- press_scored %>%
   mutate(
-    goal_diff     = as.integer(goal_diff),
-    is_losing     = goal_diff < 0,
-    is_late       = minute > LATE_THRESHOLD,
+    goal_diff = as.integer(goal_diff),
+    is_losing = goal_diff < 0,
+    is_late = minute > LATE_THRESHOLD,
     comeback_mode = is_losing & is_late
   ) %>%
-  # Keep only events in [30, 70] as the "early" group, OR events after 70
-  # This removes the chaotic 0–30 window from the control group
-  filter(
+
+    filter(
     (minute >= EARLY_LOW_BOUND & !is_late) | is_late
   )
 
-# Cell counts — compare to the unrestricted version
-cat("=== Restricted DiD Cell Summary (minutes 30–70 vs >70) ===\n")
+cat("--- Restricted DiD Cell Summary (minutes 30–70 vs >70) ---\n")
 press_did_restricted %>%
   group_by(is_late, is_losing) %>%
   summarise(
-    n_presses       = n(),
+    n_presses = n(),
     mean_location_x = round(mean(location.x, na.rm = TRUE), 2),
-    sd_location_x   = round(sd(location.x,   na.rm = TRUE), 2),
+    sd_location_x = round(sd(location.x, na.rm = TRUE), 2),
     .groups = "drop"
   ) %>%
   mutate(
-    period = ifelse(is_late,   "Late (>70')",    "Early (30–70')"),
-    score  = ifelse(is_losing, "Losing",         "Not Losing")
+    period = ifelse(is_late, "Late (>70')", "Early (30–70')"),
+    score = ifelse(is_losing, "Losing", "Not Losing")
   ) %>%
   select(score, period, n_presses, mean_location_x, sd_location_x)
 ```
@@ -1244,20 +1262,20 @@ cell_means_r <- press_did_restricted %>%
   group_by(is_late, is_losing) %>%
   summarise(mean_x = mean(location.x, na.rm = TRUE), .groups = "drop")
 
-early_losing_r    <- cell_means_r %>% filter(!is_late,  is_losing) %>% pull(mean_x)
-late_losing_r     <- cell_means_r %>% filter( is_late,  is_losing) %>% pull(mean_x)
+early_losing_r <- cell_means_r %>% filter(!is_late, is_losing) %>% pull(mean_x)
+late_losing_r <- cell_means_r %>% filter( is_late, is_losing) %>% pull(mean_x)
 early_notlosing_r <- cell_means_r %>% filter(!is_late, !is_losing) %>% pull(mean_x)
-late_notlosing_r  <- cell_means_r %>% filter( is_late, !is_losing) %>% pull(mean_x)
+late_notlosing_r <- cell_means_r %>% filter( is_late, !is_losing) %>% pull(mean_x)
 
-diff_losing_r    <- late_losing_r    - early_losing_r
+diff_losing_r <- late_losing_r - early_losing_r
 diff_notlosing_r <- late_notlosing_r - early_notlosing_r
-did_estimate_r   <- diff_losing_r    - diff_notlosing_r
+did_estimate_r <- diff_losing_r - diff_notlosing_r
 
 cat(sprintf(
   "--- Restricted DiD (30–70 window) ---\n
   Early Losing (30–70'):     %.2f m
   Late Losing  (>70'):       %.2f m
-  Δ Losing:                 %+.2f m\n
+  Δ Losing:                  %+.2f m\n
   Early Not Losing (30–70'): %.2f m
   Late Not Losing  (>70'):   %.2f m
   Δ Not Losing:              %+.2f m\n
@@ -1277,14 +1295,14 @@ model_restricted <- lm(
   data = press_did_restricted
 )
 
-cat("=== Restricted DiD Regression (30–70 window) ===\n")
+cat("--- Restricted DiD Regression (30–70 window) ---\n")
 tidy(model_restricted, conf.int = TRUE) %>%
   mutate(
     term = recode(term,
-      "(Intercept)"               = "Intercept (Early 30–70', Not Losing)",
-      "is_lateTRUE"               = "β1: Late (>70')",
-      "is_losingTRUE"             = "β2: Losing",
-      "is_lateTRUE:is_losingTRUE" = "β3: DiD (Late × Losing) ← Comeback Shift"
+      "(Intercept)" = "Intercept (Early 30–70', Not Losing)",
+      "is_lateTRUE" = "β1: Late (>70')",
+      "is_losingTRUE" = "β2: Losing",
+      "is_lateTRUE:is_losingTRUE" = "β3: DiD (Late × Losing)"
     )
   ) %>%
   select(term, estimate, std.error, p.value, conf.low, conf.high) %>%
@@ -1294,7 +1312,7 @@ tidy(model_restricted, conf.int = TRUE) %>%
 
 ```{r did-versions-comparison}
 # Side-by-side comparison: full window vs restricted window
-# This is the robustness check — shows the finding is not window-dependent
+# This is the robustness check
 
 b_full <- coef(model_base)
 p_full <- coef(summary(model_base))[, "Pr(>|t|)"]
@@ -1302,38 +1320,39 @@ b_rest <- coef(model_restricted)
 p_rest <- coef(summary(model_restricted))[, "Pr(>|t|)"]
 
 comparison_table <- tibble(
-  Specification   = c("Full window (0–70' vs >70')",
+  Specification = c("Full window (0–70' vs >70')",
                       "Restricted window (30–70' vs >70')"),
-  `β1: Late`      = round(c(b_full["is_lateTRUE"],
+  `β1: Late` = round(c(b_full["is_lateTRUE"],
                              b_rest["is_lateTRUE"]), 3),
-  `β2: Losing`    = round(c(b_full["is_losingTRUE"],
+  `β2: Losing` = round(c(b_full["is_losingTRUE"],
                              b_rest["is_losingTRUE"]), 3),
-  `β3: DiD`       = round(c(b_full["is_lateTRUE:is_losingTRUE"],
+  `β3: DiD` = round(c(b_full["is_lateTRUE:is_losingTRUE"],
                              b_rest["is_lateTRUE:is_losingTRUE"]), 3),
-  `p (DiD)`       = round(c(p_full["is_lateTRUE:is_losingTRUE"],
+  `p (DiD)` = round(c(p_full["is_lateTRUE:is_losingTRUE"],
                              p_rest["is_lateTRUE:is_losingTRUE"]), 3),
   `N (treatment)` = c(
     sum(press_did$is_late & press_did$is_losing, na.rm = TRUE),
-    sum(press_did_restricted$is_late & press_did_restricted$is_losing, na.rm = TRUE)
+    sum(press_did_restricted$is_late & press_did_restricted$is_losing, 
+        na.rm = TRUE)
   )
 )
 
-cat("=== Robustness: Full vs Restricted Pre-Treatment Window ===\n")
+cat("--- Robustness: Full vs Restricted Pre-Treatment Window ---\n")
 print(comparison_table)
 
 ```
 
 ```{r parallel-trends-check}
 
-# ── Figure 1: Parallel trends check ──────────────────────────────────────────
-# The key identification plot — shows that trends are parallel in the 30–70
+# Figure 1: Parallel trends check
+# The key identification plot shows that trends are parallel in the 30–70
 # window used as the pre-treatment period, supporting the DiD assumption.
-# The shaded region highlights the window we DROP (minutes 0–30).
+# The shaded region highlights the window we drop (minutes 0–30).
 
 press_timeline_check <- press_scored %>%
   mutate(
-    goal_diff   = as.integer(goal_diff),
-    is_losing   = goal_diff < 0,
+    goal_diff = as.integer(goal_diff),
+    is_losing = goal_diff < 0,
     score_label = ifelse(is_losing, "Losing", "Not Losing")
   ) %>%
   filter(!is.na(is_losing), minute <= 95) %>%
@@ -1341,8 +1360,8 @@ press_timeline_check <- press_scored %>%
   group_by(minute_bin, score_label) %>%
   summarise(
     mean_x = mean(location.x, na.rm = TRUE),
-    se_x   = sd(location.x,   na.rm = TRUE) / sqrt(n()),
-    n      = n(),
+    se_x = sd(location.x, na.rm = TRUE) / sqrt(n()),
+    n = n(),
     .groups = "drop"
   ) %>%
   filter(n >= 5)
@@ -1351,7 +1370,6 @@ fig_parallel <- ggplot(press_timeline_check,
        aes(x = minute_bin, y = mean_x,
            colour = score_label, fill = score_label)) +
 
-  # Shaded region: EXCLUDED window (minutes 0–30)
   annotate("rect", xmin = 0, xmax = 30,
            ymin = -Inf, ymax = Inf,
            fill = "grey80", alpha = 0.4) +
@@ -1360,7 +1378,6 @@ fig_parallel <- ggplot(press_timeline_check,
            size = 3.2, colour = "grey40",
            fontface = "italic", hjust = 0.5) +
 
-  # Shaded region: treatment window (>70')
   annotate("rect", xmin = 70, xmax = 95,
            ymin = -Inf, ymax = Inf,
            fill = "gold", alpha = 0.10) +
@@ -1369,7 +1386,6 @@ fig_parallel <- ggplot(press_timeline_check,
            size = 3.2, colour = "grey40",
            fontface = "italic", hjust = 0.5) +
 
-  # Pre-treatment window label
   annotate("rect", xmin = 30, xmax = 70,
            ymin = -Inf, ymax = Inf,
            fill = "steelblue", alpha = 0.04) +
@@ -1378,19 +1394,15 @@ fig_parallel <- ggplot(press_timeline_check,
            size = 3.2, colour = "steelblue",
            fontface = "italic", hjust = 0.5) +
 
-  # Confidence ribbon
   geom_ribbon(aes(ymin = mean_x - 1.96 * se_x,
                   ymax = mean_x + 1.96 * se_x),
               alpha = 0.15, colour = NA) +
 
-  # LOESS smooth
   geom_smooth(method = "loess", span = 0.45,
               se = FALSE, linewidth = 1.4) +
 
-  # Raw bin means
   geom_point(aes(size = n), alpha = 0.6) +
 
-  # Reference lines
   geom_vline(xintercept = 30, colour = "grey50",
              linetype = "dashed", linewidth = 0.8) +
   geom_vline(xintercept = 70, colour = "grey30",
@@ -1413,7 +1425,7 @@ fig_parallel <- ggplot(press_timeline_check,
   scale_y_continuous(limits = c(40, 108)) +
 
   labs(
-    title    = "Parallel Trends Check: Press Height by Score State",
+    title = "Parallel Trends Check: Press Height by Score State",
     subtitle = paste0(
       "Grey = excluded window (0–30') | Blue = pre-treatment window (30–70') | ",
       "Gold = treatment window (>70')\n",
@@ -1424,11 +1436,11 @@ fig_parallel <- ggplot(press_timeline_check,
   ) +
   theme_minimal(base_size = 13) +
   theme(
-    plot.title       = element_text(face = "bold", hjust = 0.5, size = 14),
-    plot.subtitle    = element_text(hjust = 0.5, colour = "grey40", size = 10),
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 14),
+    plot.subtitle = element_text(hjust = 0.5, colour = "grey40", size = 10),
     panel.grid.minor = element_blank(),
-    legend.position  = "top",
-    plot.background  = element_rect(fill = "white", color = NA)
+    legend.position = "top",
+    plot.background = element_rect(fill = "white", color = NA)
   )
 
 print(fig_parallel)
@@ -1436,16 +1448,15 @@ ggsave("fig_parallel_trends_check.png", plot = fig_parallel,
        width = 11, height = 6, dpi = 300)
 
 ```
-This visualization formally establishes the methodological foundation for our Difference-in-Differences (DiD) analysis by mapping the mean pressing height over the course of the match and segmenting it into three distinct temporal windows. The grey "Excluded" window spanning the first 30 minutes captures the tactically volatile opening phase of the match. In this early period, the red "Losing" trajectory exhibits extreme fluctuation. This visual evidence perfectly justifies our decision to discard this window from the formal model, as early score shocks produce noisy, mechanical reactions rather than sustained tactical adjustments.
 
-The central, unshaded section—designated as the "Pre-treatment window" from minutes 30 to 70—is the most critical element of the plot, as it visually tests the parallel trends assumption. Here, the assumption clearly holds. While Leverkusen naturally maintains a higher average pressing height when losing (with the red line hovering roughly 10 meters above the blue line), both trajectories move in tandem, following a similarly gentle, downward slope as the match progresses through the middle phases. This parallel movement is exactly what is required to validate the baseline counterfactual for a DiD estimator.
+This visualization formally establishes the methodological foundation for our Difference-in-Differences (DiD) analysis by mapping the mean pressing height over the course of the match, and segmenting it into three distinct temporal windows. As we presented previously, the grey "Excluded" window spanning the first 30 minutes captures the tactically volatile opening phase of the match. In this early period, the red "Losing" trajectory exhibits extreme fluctuation. This visual evidence perfectly justifies our decision to discard this window from the formal model, as early score shocks produce noisy reactions rather than proper tactical adjustments.
 
-Finally, the gold "Treatment" window on the right isolates the final 20 minutes of the match, vividly illustrating the tactical divergence that defines Leverkusen's comeback strategy. Once the 70-minute threshold is crossed, the "Not Losing" baseline remains flat and stable just above the 60-meter mark, reflecting standard game management. In stark contrast, the "Losing" trajectory breaks the established parallel trend and surges aggressively upward, peaking near 80 meters. This clearly graphs the "Comeback Shift," showing a sudden, coordinated spatial escalation rather than a natural game-flow progression, though the wide confidence bands again acknowledge the rarity of this scenario.
+The central section, designated as the "Pre-treatment window" from minutes 30 to 70, is the most critical element of the plot, as it visually tests the parallel trends assumption. Here, the assumption holds. While Leverkusen naturally maintains a higher average pressing height when losing (with the red line hovering roughly 10 meters above the blue line), both trajectories move together, following a similarly downward slope as the match progresses through the middle phases. This parallel movement is exactly what is required to validate the baseline counterfactual for a DiD estimator.
+
+Finally, the yellow "Treatment" window on the right isolates the final 20 minutes of the match, illustrating the tactical divergence that defines Leverkusen's comeback strategy. Once the 70-minute threshold is crossed, the "Not Losing" baseline remains flat and stable just above the 60-meter mark, reflecting standard game management. In contrast, the "Losing" trajectory breaks the established parallel trend and slopes aggressively upwards, peaking near 80 meters. This graphs the "Comeback Shift," showing a sudden spatial escalation rather than a natural progression, though the wide confidence bands again acknowledge the rarity of this scenario.
 
 ```{r did-restricted-window-visuals}
-# ── Figure 2: DiD estimator — restricted window ───────────────────────────
-# Same 2×2 cell means plot as the main analysis, now using the 30–70 window.
-# Side-by-side with the full window result makes the robustness argument visual.
+# Figure 2: DiD estimator, restricted window
 
 cell_means_both <- bind_rows(
   # Full window (0–70')
@@ -1454,8 +1465,8 @@ cell_means_both <- bind_rows(
     group_by(is_late, is_losing) %>%
     summarise(
       mean_x = mean(location.x, na.rm = TRUE),
-      se_x   = sd(location.x,   na.rm = TRUE) / sqrt(n()),
-      n      = n(), .groups = "drop"
+      se_x = sd(location.x,   na.rm = TRUE) / sqrt(n()),
+      n = n(), .groups = "drop"
     ) %>%
     mutate(specification = "Full window\n(0–70' vs >70')"),
 
@@ -1465,17 +1476,17 @@ cell_means_both <- bind_rows(
     group_by(is_late, is_losing) %>%
     summarise(
       mean_x = mean(location.x, na.rm = TRUE),
-      se_x   = sd(location.x,   na.rm = TRUE) / sqrt(n()),
-      n      = n(), .groups = "drop"
+      se_x = sd(location.x, na.rm = TRUE) / sqrt(n()),
+      n = n(), .groups = "drop"
     ) %>%
     mutate(specification = "Restricted window\n(30–70' vs >70')")
 ) %>%
   mutate(
-    period   = ifelse(is_late,   "Late (>70')", "Early"),
+    period = ifelse(is_late,   "Late (>70')", "Early"),
     period_n = ifelse(is_late, 1, 0),
-    score    = ifelse(is_losing, "Losing", "Not Losing"),
-    ci_lo    = mean_x - 1.96 * se_x,
-    ci_hi    = mean_x + 1.96 * se_x,
+    score = ifelse(is_losing, "Losing", "Not Losing"),
+    ci_lo = mean_x - 1.96 * se_x,
+    ci_hi = mean_x + 1.96 * se_x,
     specification = factor(specification,
                            levels = c("Full window\n(0–70' vs >70')",
                                       "Restricted window\n(30–70' vs >70')"))
@@ -1485,15 +1496,16 @@ cell_means_both <- bind_rows(
 did_annotations <- tibble(
   specification = factor(
     c("Full window\n(0–70' vs >70')", "Restricted window\n(30–70' vs >70')"),
-    levels = c("Full window\n(0–70' vs >70')", "Restricted window\n(30–70' vs >70')")
+    levels = c("Full window\n(0–70' vs >70')", 
+               "Restricted window\n(30–70' vs >70')")
   ),
-  beta  = round(c(b_full["is_lateTRUE:is_losingTRUE"],
+  beta = round(c(b_full["is_lateTRUE:is_losingTRUE"],
                   b_rest["is_lateTRUE:is_losingTRUE"]), 2),
-  pval  = round(c(p_full["is_lateTRUE:is_losingTRUE"],
+  pval = round(c(p_full["is_lateTRUE:is_losingTRUE"],
                   p_rest["is_lateTRUE:is_losingTRUE"]), 3)
 ) %>%
   mutate(
-    label = sprintf("β₃ = +%.2fm\np = %.3f", beta, pval)
+    label = sprintf("β3 = +%.2fm\np = %.3f", beta, pval)
   )
 
 fig_comparison <- ggplot(cell_means_both,
@@ -1509,10 +1521,10 @@ fig_comparison <- ggplot(cell_means_both,
   geom_text(
     data = did_annotations,
     aes(x = 1.05, y = 73, label = label),
-    hjust      = 0,
-    size       = 4,
-    colour     = "grey20",
-    fontface   = "bold.italic",
+    hjust = 0,
+    size = 4,
+    colour = "grey20",
+    fontface = "bold.italic",
     lineheight = 0.9,
     inherit.aes = FALSE
   ) +
@@ -1531,20 +1543,23 @@ fig_comparison <- ggplot(cell_means_both,
   facet_wrap(~ specification, ncol = 2) +
 
   labs(
-    title    = "Robustness: DiD Estimator Across Pre-Treatment Window Specifications",
-    subtitle = "Left: full window (0–70') | Right: restricted window (30–70')\nConsistent positive β across both specifications",
-    x        = NULL,
-    y        = "Mean Press Height (m from own goal)"
+    title = 
+      "Robustness: DiD Estimator Across Pre-Treatment Window Specifications",
+    subtitle = 
+      "Left: full window (0–70') | Right: restricted window (30–70')
+        \nConsistent positive β across both specifications",
+    x = NULL,
+    y = "Mean Press Height (m from own goal)"
   ) +
   theme_minimal(base_size = 13) +
   theme(
-    plot.title       = element_text(face = "bold", hjust = 0.5, size = 14),
-    plot.subtitle    = element_text(hjust = 0.5, colour = "grey40", size = 10),
-    strip.text       = element_text(face = "bold", size = 12),
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 14),
+    plot.subtitle = element_text(hjust = 0.5, colour = "grey40", size = 10),
+    strip.text = element_text(face = "bold", size = 12),
     strip.background = element_rect(fill = "grey92", colour = NA),
     panel.grid.minor = element_blank(),
-    legend.position  = "top",
-    plot.background  = element_rect(fill = "white", color = NA)
+    legend.position = "top",
+    plot.background = element_rect(fill = "white", color = NA)
   )
 
 print(fig_comparison)
@@ -1552,15 +1567,16 @@ ggsave("fig_did_robustness_comparison.png", plot = fig_comparison,
        width = 12, height = 6, dpi = 300)
 
 ```
+
 This visualization serves as a vital robustness check for our Difference-in-Differences (DiD) model, comparing the estimated treatment effect across two different pre-treatment baseline windows. The left panel reflects the baseline calculated using the full opening 70 minutes. Under this specification, we see the pronounced "Comeback Shift" yielding a large treatment effect of +6.17 meters. However, as established in our prior parallel trends analysis, including the tactically volatile first 30 minutes introduces significant noise from early score shocks, potentially skewing the baseline downward.
 
-The right panel addresses this by restricting the pre-treatment baseline strictly to the tactically stable 30–70 minute window. By excluding the chaotic opening phase, the early "Losing" average pressing height naturally calibrates much higher, moving from approximately 67 meters up to roughly 70.5 meters. Because Leverkusen is already pressing significantly higher during this settled middle phase when trailing, the relative magnitude of the subsequent late-game surge is visibly dampened. Consequently, the DiD estimator drops to +1.36 meters.
+The right panel addresses this by restricting the pre-treatment baseline strictly to the tactically stable 30–70 minute window. By excluding the opening phase, the early "Losing" average pressing height naturally calibrates much higher, moving from approximately 67 meters up to roughly 70.5 meters. Because Leverkusen is already pressing significantly higher during this settled middle phase when trailing, the relative magnitude of the subsequent late-game surge is visibly weakened. Consequently, the DiD estimator drops to +1.36 meters.
 
-Despite this reduction in effect size, the core tactical insight holds robustly: the treatment effect (beta coefficient) remains positive across both specifications. Regardless of how the baseline is sliced, Leverkusen systematically pushes higher up the pitch when chasing a late game, defying the natural game-state gravity that pulls their "Not Losing" baseline deeper. Still, the soaring p-values (0.104 and 0.739) alongside the expansive error bars provide a stark, transparent acknowledgment of the dataset's statistical limits. The sheer lack of minutes played from a losing position late in matches makes achieving traditional statistical significance mathematically elusive, even when the tactical intent is clear.
+Despite this reduction in effect size, the core tactical insight holds: the treatment effect (beta coefficient) remains positive across both specifications. Regardless of how the baseline is sliced, Leverkusen systematically pushes higher up the pitch when chasing a late game, going against how the game typically unfolds, pulling their "Not Losing" baseline deeper. Still, the increasing p-values (0.104 and 0.739) alongside the expansive error bars provide an acknowledgment of the dataset's statistical limits. The lack of minutes played from a losing position late in matches makes achieving traditional statistical significance a complicated task, even when the tactical intent is clear.
 
 ```{r restricted-did-by-elo}
 
-# ── Figure 3: Restricted DiD by ELO tier ──────────────────────────────────
+# Figure 3: Restricted DiD by ELO tier
 # Repeat the opponent quality breakdown on the restricted window sample
 
 press_did_restricted_elo <- press_did_restricted %>%
@@ -1573,17 +1589,17 @@ did_by_tier_r <- press_did_restricted_elo %>%
   summarise(mean_x = mean(location.x, na.rm = TRUE),
             n = n(), .groups = "drop") %>%
   pivot_wider(
-    names_from  = c(is_late, is_losing),
+    names_from = c(is_late, is_losing),
     values_from = c(mean_x, n),
-    names_sep   = "_"
+    names_sep = "_"
   ) %>%
   mutate(
-    diff_losing    = round(mean_x_TRUE_TRUE  - mean_x_FALSE_TRUE,  2),
+    diff_losing = round(mean_x_TRUE_TRUE - mean_x_FALSE_TRUE,  2),
     diff_notlosing = round(mean_x_TRUE_FALSE - mean_x_FALSE_FALSE, 2),
-    did_estimate   = round(diff_losing - diff_notlosing, 2)
+    did_estimate = round(diff_losing - diff_notlosing, 2)
   )
 
-cat("=== Restricted DiD Estimate by Opponent Quality ===\n")
+cat("--- Restricted DiD Estimate by Opponent Quality ---\n")
 print(did_by_tier_r %>% select(elo_tier, diff_losing, diff_notlosing,
                                 did_estimate, n_TRUE_TRUE))
 
@@ -1591,11 +1607,11 @@ plot_did_r <- press_did_restricted_elo %>%
   group_by(elo_tier, is_late, is_losing) %>%
   summarise(
     mean_x = mean(location.x, na.rm = TRUE),
-    se_x   = sd(location.x,   na.rm = TRUE) / sqrt(n()),
-    n      = n(), .groups = "drop"
+    se_x = sd(location.x, na.rm = TRUE) / sqrt(n()),
+    n = n(), .groups = "drop"
   ) %>%
   mutate(
-    score    = ifelse(is_losing, "Losing", "Not Losing"),
+    score = ifelse(is_losing, "Losing", "Not Losing"),
     period_n = ifelse(is_late, 1, 0)
   )
 
@@ -1613,9 +1629,9 @@ fig_did_r <- ggplot(plot_did_r,
   geom_text(
     data = did_by_tier_r %>%
       mutate(
-        label    = paste0("DiD = +", did_estimate, "m"),
+        label = paste0("DiD = +", did_estimate, "m"),
         period_n = 1.1,
-        mean_x   = (mean_x_TRUE_TRUE + mean_x_TRUE_FALSE) / 2
+        mean_x = (mean_x_TRUE_TRUE + mean_x_TRUE_FALSE) / 2
       ),
     aes(x = period_n, y = mean_x, label = label),
     hjust = 0, size = 3.5,
@@ -1625,7 +1641,7 @@ fig_did_r <- ggplot(plot_did_r,
 
   scale_colour_manual(
     values = c("Losing" = "#d6604d", "Not Losing" = "#2166ac"),
-    name   = "Score state"
+    name = "Score state"
   ) +
   scale_size_continuous(range = c(3, 7), guide = "none") +
   scale_x_continuous(
@@ -1635,20 +1651,19 @@ fig_did_r <- ggplot(plot_did_r,
   ) +
   facet_wrap(~ elo_tier, ncol = 3) +
   labs(
-    title    = "Comeback Shift by Opponent Quality — Restricted Window (30–70')",
-    subtitle = "DiD = (Losing Late − Losing Early) − (Not Losing Late − Not Losing Early)",
-    x        = NULL,
-    y        = "Average Press Height (m from own goal)"
+    title = "Comeback Shift by Opponent Quality, Restricted Window (30–70')",
+    x = NULL,
+    y = "Average Press Height (m from own goal)"
   ) +
   theme_minimal(base_size = 13) +
   theme(
-    plot.title       = element_text(face = "bold", hjust = 0.5, size = 14),
-    plot.subtitle    = element_text(hjust = 0.5, colour = "grey40", size = 10),
-    strip.text       = element_text(face = "bold", size = 12),
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 14),
+    plot.subtitle = element_text(hjust = 0.5, colour = "grey40", size = 10),
+    strip.text = element_text(face = "bold", size = 12),
     strip.background = element_rect(fill = "grey92", colour = NA),
     panel.grid.minor = element_blank(),
-    legend.position  = "top",
-    plot.background  = element_rect(fill = "white", color = NA)
+    legend.position = "top",
+    plot.background = element_rect(fill = "white", color = NA)
   )
 
 print(fig_did_r)
@@ -1656,7 +1671,8 @@ ggsave("fig_did_restricted_by_tier.png", plot = fig_did_r,
        width = 14, height = 6, dpi = 300)
 
 ```
-A potential concern is that the parallel trends assumption may not hold in the full pre-treatment window, as the Losing group exhibits elevated volatility in the opening 30 minutes — consistent with acute tactical reactions to early concessions rather than sustained pressing strategy. To address this, we restrict the pre-treatment window to minutes 30–70, where visual inspection confirms more stable parallel trends. Under this specification, the DiD estimate falls to +1.36m (p = 0.739), suggesting the full-window estimate partially reflects compositional differences in the pre-treatment period. Given the limited sample of 34 matches, we treat the full-window result as descriptive evidence of a comeback shift tendency rather than a precise causal estimate.
+
+A potential concern is that the parallel trends assumption may not hold in the full pre-treatment window, as the "Losing" group exhibits elevated volatility in the opening 30 minutes, consistent with sharp tactical reactions to early concessions rather than sustained pressing strategy. To address this, we restrict the pre-treatment window to minutes 30–70, where visual inspection confirms more stable parallel trends. Under this specification, the DiD estimate falls to +1.36m (p = 0.739), suggesting the full-window estimate partially reflects compositional differences in the pre-treatment period. Given the limited sample of 34 matches, we treat the full-window result as descriptive evidence of a comeback shift tendency rather than a precise causal estimate.
 
 However, disaggregating this restricted-window model by opponent quality reveals that the muted aggregate effect masks profound tactical heterogeneity. As observed in the primary specification, the "Weak opponent" panel remains entirely devoid of losing observations, reflecting Leverkusen's absolute dominance over lower-tier sides. Against top-tier opponents, the treatment effect is a modest +2.78m; both trajectories regress deeper into their own half late in the game, indicating a pragmatic approach where the team prioritizes structural stability against dangerous counter-attacking opposition even when trailing. The true tactical escalation is isolated almost entirely within the "Mid opponent" tier, where the DiD estimate surges to a striking +9.97m. In these specific matchups, Leverkusen completely breaks from the baseline trend, launching a massive forward pressing shift to salvage the game. This confirms that while the aggregate comeback shift appears statistically diluted under the stricter baseline, the highly aggressive tactical response was indeed a core component of their system—it was simply deployed with calculated discrimination based on opponent strength.
 
@@ -1882,7 +1898,7 @@ team_metrics_1516 <- profiles_1516 %>%
 
 # Add Leverkusen 2023/24 as the focal observation
 lev_2324_metrics <- tibble(
-  team               = "Bayer Leverkusen\n2023/24 ★",
+  team               = "Bayer Leverkusen\n2023/24 *",
   early_notlosing    = early_notlosing,   # from main analysis cell means
   early_losing       = early_losing,
   late_notlosing     = late_notlosing,
@@ -1904,7 +1920,7 @@ lev_2324_metrics <- tibble(
 # Combined table for all comparisons
 all_metrics <- bind_rows(team_metrics_1516, lev_2324_metrics)
 
-cat("=== Press Profile Metrics — Top Teams ===\n")
+cat("--- Press Profile Metrics — Top Teams ---\n")
 all_metrics %>%
   select(team, season, losing_late_height, press_maintenance,
          did_estimate, n_late_losing) %>%
@@ -1928,7 +1944,7 @@ library(stringr)  # also needed for str_wrap
 plot_bar <- all_metrics %>%
   filter(!is.na(losing_late_height)) %>%
   mutate(
-    is_focal   = team == "Bayer Leverkusen\n2023/24 ★",
+    is_focal   = team == "Bayer Leverkusen\n2023/24 *",
     team_label = str_wrap(team, width = 15),
     team_label = fct_reorder(team_label, losing_late_height)
   )
@@ -2018,9 +2034,9 @@ Only 5 of the 7 top teams appear — Schalke, Mainz, and Hertha had insufficient
 plot_scatter <- all_metrics %>%
   filter(!is.na(losing_late_height), !is.na(press_maintenance)) %>%
   mutate(
-    is_focal    = team == "Bayer Leverkusen\n2023/24 ★",
+    is_focal    = team == "Bayer Leverkusen\n2023/24 *",
     team_short  = case_when(
-      grepl("2023/24", team)           ~ "LEV 23/24 ★",
+      grepl("2023/24", team)           ~ "LEV 23/24 *",
       grepl("Bayern",  team)           ~ "BAY",
       grepl("Dortmund", team)          ~ "BVB",
       grepl("Leverkusen", team)        ~ "LEV 15/16",
@@ -2132,7 +2148,7 @@ plot_profiles <- all_metrics %>%
   select(team, season, is_focal = season,
          early_notlosing, early_losing,
          late_notlosing,  late_losing) %>%
-  mutate(is_focal = team == "Bayer Leverkusen\n2023/24 ★") %>%
+  mutate(is_focal = team == "Bayer Leverkusen\n2023/24 *") %>%
   pivot_longer(
     cols      = c(early_notlosing, early_losing,
                   late_notlosing,  late_losing),
@@ -2146,7 +2162,7 @@ plot_profiles <- all_metrics %>%
     score     = ifelse(is_losing, "Losing",      "Not Losing"),
     period_n  = ifelse(is_late, 1, 0),
     team_short = case_when(
-      grepl("2023/24",   team)         ~ "LEV\n23/24★",
+      grepl("2023/24",   team)         ~ "LEV\n23/24*",
       grepl("Bayern",    team)         ~ "Bayern",
       grepl("Dortmund",  team)         ~ "Dortmund",
       grepl("Leverkusen",team)         ~ "LEV\n15/16",
@@ -2156,7 +2172,7 @@ plot_profiles <- all_metrics %>%
       grepl("Hertha",    team)         ~ "Hertha",
       TRUE ~ team
     ),
-    team_short = fct_relevel(team_short, "LEV\n23/24★", after = Inf)
+    team_short = fct_relevel(team_short, "LEV\n23/24*", after = Inf)
   )
 
 fig_profiles <- ggplot(plot_profiles,
@@ -2231,7 +2247,7 @@ Under Xabi Alonso's predecessor, losing late meant pressing LOWER, the complete 
 ```{r extension-summary}
 
 # Final summary table — everything in one place for the paper
-cat("=== Benchmark Summary Table ===\n\n")
+cat("--- Benchmark Summary Table ---\n\n")
 all_metrics %>%
   filter(!is.na(losing_late_height)) %>%
   arrange(desc(losing_late_height)) %>%
