@@ -2243,14 +2243,22 @@ all_metrics %>%
 
 Our analysis investigated whether Bayer Leverkusen's 2023/24 unbeaten season was underpinned by an anomalous spatial pressing response under adverse conditions, or if their late-game aggression was a standard among elite Bundesliga teams. The spatial and econometric evidence hint at the former: under Xabi Alonso, Leverkusen engineered a distinctive, highly scalable tactical system defined by its extreme spatial escalation when chasing a deficit. By integrating spatial KDE heatmaps, zonal raster statistics, and a Difference-in-Differences (DiD) framework, several core tenets of their identity emerge:
 
-- Precision Trap Geography: Leverkusen does not press blindly. Their defensive structure is designed to funnel opponents into the advanced flanks, where their pressing traps peak at a highly efficient 36% to 39% success rate.
-
-- The Comeback Shift: When trailing after the 70th minute, Leverkusen breaks from natural game progression. Rather than dropping deeper as matches wear on, they enact a coordinated forward shift. While the aggregate DiD estimator (+1.36 m in the restricted 30–70 minute specification) is visually muted, conditioning the model on opponent quality reveals massive tactical escalation against mid-tier teams (+9.97 m). Against top-tier sides, they adopt a pragmatic stubbornness (+2.78 m), refusing to concede territory to dangerous counter-attacking opponents.
-
-- A Historical Anomaly: Benchmarking this behavior against the top seven Bundesliga teams from the 2015/16 season with available data confirms that Alonso's system is an outlier, not an elite norm. Leverkusen 2023/24 posted the highest absolute press height when losing late (69.5 m) and the most aggressive press maintenance index (+8.80 m). Crucially, this is entirely a product of the current regime; the 2015/16 iteration of Leverkusen exhibited the exact opposite behavior, dropping their pressing lines significantly when behind.
+Leverkusen does not press blindly. Their defensive structure is designed to funnel opponents into the advanced flanks, where their pressing traps peak at a highly efficient 36% to 39% success rate. When trailing after the 70th minute, Leverkusen breaks from natural game progression. Rather than dropping deeper as matches wear on, they enact a coordinated forward shift. While the aggregate DiD estimator (+1.36 m in the restricted 30–70 minute specification) is visually muted, conditioning the model on opponent quality reveals massive tactical escalation against mid-tier teams (+9.97 m). Against top-tier sides, they adopt a pragmatic stubbornness (+2.78 m), refusing to concede territory to dangerous counter-attacking opponents. Benchmarking this behavior against the top seven Bundesliga teams from the 2015/16 season with available data confirms that Alonso's system is an outlier, not an elite norm. Leverkusen 2023/24 posted the highest absolute press height when losing late (69.5 m) and the most aggressive press maintenance index (+8.80 m). Crucially, this is entirely a product of the current regime; the 2015/16 iteration of Leverkusen exhibited the exact opposite behavior, dropping their pressing lines significantly when behind.
 
 We must transparently acknowledge the statistical boundaries of this study. The large p-values and wide confidence intervals in our DiD estimators fall short of traditional significance thresholds. However, in the context of sports analytics, this is a feature rather than a bug of an unbeaten season. Bayer Leverkusen simply spent so few late-game minutes in a losing state that achieving robust statistical power is mathematically impossible.
 
 Ultimately, the spatial footprints left by this team tell a clear story. Bayer Leverkusen’s historic 2023/24 campaign was not just a product of technical brilliance or luck, but of a rigorously drilled, spatially anomalous tactical system that enclosed opponents exactly when the stakes were highest.
 
 ---
+
+# References
+
+Andrienko, G., Andrienko, N., Budziak, G., Dykes, J., Fuchs, G., von Landesberger, T., & Weber, H. (2017). Visual analysis of pressure in football. Data Mining and Knowledge Discovery, 31(6), 1793–1839. https://doi.org/10.1007/s10618-017-0513-2
+
+Bauer, P., & Anzer, G. (2021). Data-driven detection of counterpressing in professional football: A supervised machine learning task based on synchronized positional and event data with expert-based feature extraction. Data Mining and Knowledge Discovery, 35(5), 2009–2049. https://doi.org/10.1007/s10618-021-00763-7
+
+Epasinghege Dona, N., & Swartz, T. B. (2024). Causal analysis of tactics in soccer: The case of throw-ins. IMA Journal of Management Mathematics, 35(1), 111–126. https://doi.org/10.1093/imaman/dpad022
+
+Peters, A., Parmar, N., Davies, M., & James, N. (2025). A rule-based approach to classify counterpressing – analysis of its risks and relationship with rest defence. International Journal of Performance Analysis in Sport. Advance online publication. https://doi.org/10.1080/24748668.2025.2473799
+
+Vogelbein, M., Nopp, S., & Hökelmann, A. (2014). Defensive transition in soccer–are prompt possession regains a measure of success? A quantitative analysis of German Fußball-Bundesliga 2010/2011. Journal of Sports Sciences, 32(11), 1076–1083. https://doi.org/10.1080/02640414.2013.879671
