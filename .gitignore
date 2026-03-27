@@ -8,7 +8,6 @@
 
 # knitr and rmarkdown outputs
 *.html
-*.pdf
 *_cache/
 *_files/
 
