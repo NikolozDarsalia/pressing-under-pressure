@@ -1,6 +1,5 @@
 ---
-title: "Bayer Leverkusen 2023/24 — Spatial Analysis of Pressing Behavior (Never-Say-Die
-  Identity)"
+title: "Tactical Adaptation or Good Fortune: A Spatial Analysis of Bayer Leverkusen's Late-Game Pressing"
 author: 'Daniel Campos, Nikoloz Darsalia, Tina Sikharulidze, and Eric Gutiérrez'
 date: "`r Sys.Date()`"
 output:
@@ -35,7 +34,7 @@ knitr::opts_chunk$set(
 
 **Motivation:**
 
-On April 14, 2024, Bayer Leverkusen finished the most remarkable season in Bundesliga history: 34 matches unbeaten, including ten comebacks from losing positions. A team that was trailing in the final minutes should have dropped points many times, yet they never did. Most analysts and journalists put this down to resilience, mentality, or luck, but Xabi Alonso was clear that it came from their tactical system. That difference is important: if a team's ability to come back when losing is something structural, built into how they press and move, rather than something that just happens, it changes how we think about what makes a winning team. This study aims to test that idea, shifting the focus of this season away from subjective explanations and toward something measurable. If their unbeaten identity was truly a system, it should leave a clear trace on the pitch.
+On May 18, 2024, Bayer Leverkusen finished the most remarkable season in Bundesliga history: 34 matches unbeaten, including ten comebacks from losing positions. A team that was trailing in the final minutes should have dropped points many times, yet they never did. Most analysts and journalists put this down to resilience, mentality, or luck, but Xabi Alonso was clear that it came from their tactical system. That difference is important: if a team's ability to come back when losing is something structural, built into how they press and move, rather than something that just happens, it changes how we think about what makes a winning team. This study aims to test that idea, shifting the focus of this season away from subjective explanations and toward something measurable. If their unbeaten identity was truly a system, it should leave a clear trace on the pitch.
 
 Whether late-game performance reflects deliberate tactics or good fortune is something football science has not yet answered in a rigorous way. The field has advanced considerably in recent years, using spatio-temporal tracking data to study pitch control, passing networks, and how game state shapes team behavior, showing for example how teams that go ahead tend to drop their defensive line and give up possession. Pressing behavior has been studied spatially (Andrienko et al., 2017), automated tools have been developed to detect and measure counterpressing across full seasons (Bauer & Anzer, 2021; Peters et al., 2025), the effect of game state on ball recovery timing has been quantified (Vogelbein et al., 2014), and causal inference has been brought into football research through set-piece analysis like throw-ins (Epasinghege Dona & Swartz, 2023). To the best of our knowledge, what has not been done is combining all of this to ask whether a specific team pushes its pressing line higher in a systematic way when losing late in a match, tested with formal causal inference on spatial data. Where a team presses under pressure reflects what has been trained on the training ground, and Leverkusen's unusual comeback record makes it the best possible case to study: if a spatial signal exists anywhere, it should appear here.
 
@@ -410,7 +409,7 @@ print(zone_centroids)
 The KDE maps show the spatial density of (A) all pressing events and
 (B) only counterpressing events. A counterpressing event is usually defined as an attempt to win back possession upon losing it, and includes the following: pressure, dribbled past, 50-50, duel, block, interception, and foul committed (not offensive). In our case, the time threshold to classify any of these actions as counterpressing events is set at 5 seconds.
 
-```{r kde-maps, fig.height=5}
+```{r kde-maps, fig.width=12, fig.height=5, out.width="100%"}
 # Helper function: build a KDE heatmap on a StatsBomb pitch
 make_kde_map <- function(data, title, subtitle,
                          fill_palette = "magma", legend_label = "Density") {
@@ -492,7 +491,7 @@ The left panel (A) visualizes the spatial density of Bayer Leverkusen's total pr
 
 The right panel (B) shifts the focus to counterpressing events, illustrating exactly where Leverkusen immediately presses right after losing the ball in an attempt to regain possesion. Unlike the highly localized spike seen in their overall pressing, the density of these counterpressing events is broadly distributed across the entire attacking half. The heavy clustering of high-density dark purple zones, which extends from the center circle through to the opponent's final third, demonstrates that their tactical system prioritizes not allowing the opponent to build a potentially effective attacking play by pressing up high, rather than just recovering a balanced structure to face the defensive phase.
  
-```{r kde-by-tier, fig.height=5}
+```{r kde-by-tier, fig.width=12, fig.height=5, out.width="100%"}
 # Repeat for each ELO tier
 tier_maps <- lapply(
   c("Top opponent", "Mid opponent", "Weak opponent"),
@@ -610,7 +609,7 @@ cat("--- Zonal Trap Rates (terra::zonal) ---\n")
 print(zone_stats_labelled %>% select(zone6, trap_rate_pct))
 ```
 
-```{r raster-map, fig.height=7}
+```{r raster-map, fig.width=12, fig.height=5, out.width="100%"}
 # Compose the final raster + vector overlay figure:
 #   - geom_raster() renders the smoothed trap rate surface
 #   - geom_path() overlays the zone polygon borders (coord_fixed compatible)
@@ -943,7 +942,7 @@ col_losing <- "#d6604d"
 col_notlosing <- "#2166ac" 
 ```
 
-```{r did-pitchmap, fig.height=5}
+```{r did-pitchmap, fig.width=12, fig.height=5, out.width="100%"}
 # Figure A: Pitch map, KDE for each of the 4 DiD cells
 # Shows where on the pitch the comeback shift happens spatially
 
@@ -1003,7 +1002,7 @@ The visualization above employs a Difference-in-Differences (DiD) framework to m
 
 The focal point of the analysis is the far-right panel, marked as the "treatment cell," which isolates the specific condition of losing late in a match (after the 70th minute). In this scenario, the pressing footprint almost completely clears out Leverkusen's own defensive half, shifting sharply to the right to form high-density clusters around the opponent's penalty area and advanced flanks. This illustrates the team's tactical escalation: when chasing a game in the final twenty minutes, Leverkusen executes a coordinated forward shift to overwhelm the opposition deep in their own territory.
 
-```{r did-estimator, fig.height=6}
+```{r did-estimator, fig.width=12, fig.height=5, out.width="100%"}
 # Figure B: DiD estimator plot
 
 cell_means_ci <- press_did %>%
@@ -1085,7 +1084,7 @@ This visualization quantifies Bayer Leverkusen’s spatial tactical adjustments 
 
 The core finding is captured by the "Comeback Shift" on the right side of the plot. By comparing the actual late-game losing press height (nearly 70 meters) against the expected counterfactual, where the red line would have hypothetically ended had it followed the same downward slope as the blue line, the model isolates a specific treatment effect of +6.2 meters. This confirms that Leverkusen executes a coordinated push up the pitch when chasing a late equalizer. It is worth noting, however, that the large error bars in the late-losing scenario (n=91) yield a p-value of 0.104. While this falls just outside traditional thresholds for statistical significance, the width of the confidence interval might tell us that Bayer Leverkusen spent so little time losing late in matches during their historic unbeaten season that the sample size naturally restricts the statistical power, even when the tactical shift is noticeable.
 
-```{r did-timeline, fig.height=6}
+```{r did-timeline, fig.width=12, fig.height=5, out.width="100%"}
 # Figure C: Minute-by-minute press height trajectory
 # Shows the temporal dynamics of the comeback shift through the match
 
@@ -1150,7 +1149,7 @@ We restrict the pre-treatment window to minutes 30–70 to exclude the tacticall
 
 Once the match crosses the 70-minute threshold into the treatment window, the trajectories diverge dramatically. The baseline "Not Losing" state remains remarkably stable, hovering consistently just above the 60-meter mark as the team handles the game. In contrast, the "Losing" trajectory exhibits a sharp spike, surging to a peak mean pressing height of nearly 80 meters before dropping off in stoppage time. This visualizes the aggressive tactical escalation perfectly: rather than a gradual upward drift, Leverkusen executes a sudden spatial shift to pin the opponent deep in their own half. The wide confidence bands surrounding this late-game losing surge further reinforce our earlier statistical caveat, visually representing the rarity of this game state during their historic unbeaten campaign.
 
-```{r did-by-elo, fig.height=6}
+```{r did-by-elo, fig.width=12, fig.height=5, out.width="100%"}
 # Figure D: DiD by opponent quality, parallel trends faceted by ELO tier
 # Tests whether the comeback shift is stronger against better teams
 
@@ -1341,7 +1340,7 @@ print(comparison_table)
 
 ```
 
-```{r parallel-trends-check}
+```{r parallel-trends-check, fig.width=12, fig.height=5, out.width="100%"}
 
 # Figure 1: Parallel trends check
 # The key identification plot shows that trends are parallel in the 30–70
@@ -1454,7 +1453,7 @@ The central section, designated as the "Pre-treatment window" from minutes 30 to
 
 Finally, the yellow "Treatment" window on the right isolates the final 20 minutes of the match, illustrating the tactical divergence that defines Leverkusen's comeback strategy. Once the 70-minute threshold is crossed, the "Not Losing" baseline remains flat and stable just above the 60-meter mark, reflecting standard game management. In contrast, the "Losing" trajectory breaks the established parallel trend and slopes aggressively upwards, peaking near 80 meters. This graphs the "Comeback Shift," showing a sudden spatial escalation rather than a natural progression, though the wide confidence bands again acknowledge the rarity of this scenario.
 
-```{r did-restricted-window-visuals}
+```{r did-restricted-window-visuals, fig.width=12, fig.height=5, out.width="100%"}
 # Figure 2: DiD estimator, restricted window
 
 cell_means_both <- bind_rows(
@@ -1573,7 +1572,7 @@ The right panel addresses this by restricting the pre-treatment baseline strictl
 
 Despite this reduction in effect size, the core tactical insight holds: the treatment effect (beta coefficient) remains positive across both specifications. Regardless of how the baseline is sliced, Leverkusen systematically pushes higher up the pitch when chasing a late game, going against how the game typically unfolds, pulling their "Not Losing" baseline deeper. Still, the increasing p-values (0.104 and 0.739) alongside the expansive error bars provide an acknowledgment of the dataset's statistical limits. The lack of minutes played from a losing position late in matches makes achieving traditional statistical significance a complicated task, even when the tactical intent is clear.
 
-```{r restricted-did-by-elo}
+```{r restricted-did-by-elo, fig.width=12, fig.height=5, out.width="100%"}
 
 # Figure 3: Restricted DiD by ELO tier
 # Repeat the opponent quality breakdown on the restricted window sample
@@ -1924,7 +1923,7 @@ all_metrics %>%
 
 ```
 
-```{r ranked-bar-chart}
+```{r ranked-bar-chart, fig.width=12, fig.height=5, out.width="100%"}
 
 # Figure 1: Ranked bar chart of losing-late press height
 # Each bar = a team's mean press height when losing after 70'.
@@ -2010,7 +2009,7 @@ Leverkusen 2023/24 (red) sits 5.5m above the next-best team (Bayern 64.0m) and 8
 Notice how Leverkusen 2015/16 (53.0m) falls below the 2015/16 median, confirming that the aggressive losing-late press is a 2023/24 phenomenon specific to Alonso's system, not a persistent club trait. Only 4 of the 7 top teams appear, provided that Schalke, Mainz, and Hertha had insufficient pressing event data in the losing-late cell to produce reliable estimates and were excluded from the figure.
 
 
-```{r scatter-plot-for-teams}
+```{r scatter-plot-for-teams, fig.width=12, fig.height=5, out.width="100%"}
 
 # Figure 2: Scatter. Press maintenance vs losing-late height
 # Two-dimensional view: x = how high they press when losing late,
@@ -2113,7 +2112,7 @@ Leverkusen 2023/24 (red diamond) sits in the extreme top-right quadrant, and it 
 
 Dortmund (BVB) and Gladbach (BMG) show moderate maintenance but lower absolute height. Bayern Munich (BAY) presses high in absolute terms but shows relatively low maintenance (+2.52m), suggesting their high press is a general style rather than a situational comeback response. Leverkusen 2015/16 (LEV 15/16) sits in the bottom-left, with low absolute height and negative maintenance. This is the sharpest possible contrast with their 2023/24 season.
 
-```{r press-profile-did-plots}
+```{r press-profile-did-plots, fig.width=12, fig.height=5, out.width="100%"}
 
 # Figure 3: Press height profiles across all 4 DiD cells
 # Shows each team's full pressing profile: early/late × losing/not-losing.
