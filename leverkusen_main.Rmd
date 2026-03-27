@@ -14,7 +14,7 @@ output:
     theme: flatly
     highlight: tango
     number_sections: true
-subtitle: BSE Geospatial Data Science | Term Paper
+subtitle: Barcelona School of Economics | Geospatial Data Science | Term Paper
 ---
 
 ```{r setup, include=FALSE}
@@ -43,12 +43,12 @@ The analysis comes with real challenges. The main problem is partly caused by th
 
 **Preview of the Results:**
 
-We find that it does. Leverkusen presses 6.2 metres higher when losing after the 
+We find that it does. Leverkusen presses 6.2 meters higher when losing after the 
 70th minute compared to the counterfactual trend, a gap roughly equal to the width 
 of the penalty area. However, the results obtained are not statistically significant. 
 
 Against their own 2015/16 incarnation, the contrast is even more defined: the same club, nine years earlier, dropped their press when losing late 
-by 3.7 metres. The comeback identity, in other words, is not the club; it is 
+by 3.7 meters. The comeback identity, in other words, is not the club; it is 
 Alonso's system.
 
 To arrive at these findings we combine three analytical layers. First, we map 
@@ -513,7 +513,7 @@ fig2 <- tier_maps[[1]] + tier_maps[[2]] + tier_maps[[3]] +
     title = "Bayer Leverkusen: Trap Zone Geography by Opponent Quality",
     subtitle = "Does the pressing trap location change against stronger teams?",
     theme = theme(
-      plot.title    = element_text(face = "bold", size = 15, hjust = 0.5),
+      plot.title = element_text(face = "bold", size = 15, hjust = 0.5),
       plot.subtitle = element_text(size = 11, hjust = 0.5, colour = "grey40")
     )
   )
@@ -651,20 +651,20 @@ fig3 <- ggplot() +
     labels = percent_format(accuracy = 1)
   ) +
   # Vector layer: zone polygon borders
-  geom_path(data      = zone_borders_df,
+  geom_path(data = zone_borders_df,
             aes(x = x, y = y, group = group),
-            colour    = "grey10",
+            colour = "grey10",
             linewidth = 1.8) +
-  geom_label(data          = zone_label_coords,
+  geom_label(data = zone_label_coords,
              aes(x = cx, y = cy, label = label),
-             colour        = "grey10",
-             fill          = "white",
-             fontface      = "bold",
-             size          = 3.8,
-             lineheight    = 0.95,
+             colour = "grey10",
+             fill = "white",
+             fontface = "bold",
+             size = 3.8,
+             lineheight = 0.95,
              label.padding = unit(0.3, "lines"),
-             label.size    = 0.3,
-             alpha         = 0.85) +
+             label.size = 0.3,
+             alpha = 0.85) +
   # Pitch boundary masks, slightly inward to hide noisy raster edges
   annotate("rect", xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=1, fill="white", 
            color=NA) +
@@ -677,7 +677,7 @@ fig3 <- ggplot() +
   annotate_pitch(dimensions = pitch_statsbomb, colour = "grey40", fill = NA) +
   coord_fixed(xlim = c(-2, 122), ylim = c(-3, 83), expand = FALSE) +
   labs(
-    title    = "Counterpressing Rate: Raster Surface + Zonal Statistics",
+    title = "Counterpressing Rate: Raster Surface + Zonal Statistics",
   ) +
   theme_pitch() +
   theme(
@@ -836,7 +836,7 @@ cat(sprintf(
 ))
 ```
 
-## DiD Regression Models
+## DiD: Regression Models
 
 ```{r did-regression}
 # Model 1: Baseline DiD
@@ -922,7 +922,7 @@ cat("--- DiD Estimate by Opponent Quality ---\n")
 print(did_by_tier)
 ```
 
-## DiD Visualizations
+## DiD: Visualizations
 
 ```{r did-shared-theme}
 # Shared visual theme and colour palette for all DiD figures
@@ -1412,11 +1412,11 @@ fig_parallel <- ggplot(press_timeline_check,
 
   scale_colour_manual(
     values = c("Losing" = "#d6604d", "Not Losing" = "#2166ac"),
-    name   = "Score state"
+    name = "Score state"
   ) +
   scale_fill_manual(
     values = c("Losing" = "#d6604d", "Not Losing" = "#2166ac"),
-    guide  = "none"
+    guide = "none"
   ) +
   scale_size_continuous(range = c(1.5, 4), guide = "none") +
   scale_x_continuous(breaks = seq(0, 95, 10)) +
@@ -1786,8 +1786,7 @@ get_press_with_score <- function(press_events, goals_data, team_name) {
 #   early (30–70') × losing / not-losing
 #   late  (>70') × losing / not-losing
 #
-# We use the same restricted window (30–70') as our main analysis
-# for consistency
+# We use the same restricted window (30–70') as our main analysis for consistency
 
 LATE_THRESHOLD <- 70
 EARLY_LOW_BOUND <- 30
@@ -1861,9 +1860,9 @@ cat("Teams successfully processed:",
 team_metrics_1516 <- profiles_1516 %>%
   select(team, is_late, is_losing, mean_x, n) %>%
   pivot_wider(
-    names_from  = c(is_late, is_losing),
+    names_from = c(is_late, is_losing),
     values_from = c(mean_x, n),
-    names_sep   = "_"
+    names_sep = "_"
   ) %>%
   rename(
     early_notlosing = mean_x_FALSE_FALSE,
@@ -1951,7 +1950,7 @@ fig_bar <- ggplot(plot_bar,
   geom_col(width = 0.7, alpha = 0.9) +
   
   geom_text(aes(label = paste0(round(losing_late_height, 1), "m")),
-            hjust  = -0.15,
+            hjust = -0.15,
             size = 3.8,
             colour = "grey20",
             fontface = "bold") +
@@ -1984,7 +1983,8 @@ fig_bar <- ggplot(plot_bar,
     subtitle = paste0(
       "Mean press location.x (m) in losing-late state | ",
       "Restricted window (30–70' pre-treatment)\n",
-      "Red = Leverkusen 2023/24 | Blue = 2015/16 top-7 Bundesliga teams with enough data available"
+      "Red = Leverkusen 2023/24 | Blue = 2015/16 top-7 Bundesliga teams with enough data 
+      available"
     ),
     x = NULL,
     y = "Mean Press Height (m from own goal line)"
@@ -2004,10 +2004,9 @@ ggsave("fig_benchmark_losing_late_height.png", plot = fig_bar,
 
 ```
 
-Leverkusen 2023/24 (red) sits 5.5m above the next-best team (Bayern 64.0m) and 8.4m above the 2015/16 median (61.1m). This is a large gap on a pitch that has a total length of 120m, and it is roughly equivalent to the width of the penalty area.
+Leverkusen 2023/24 (red) sits 5.5 m above the next-best team (Bayern 64.0 m) and 8.4 m above the 2015/16 median (61.1 m). This is a large gap on a pitch that has a total length of 120 m, and it is roughly equivalent to the width of the penalty area.
 
-Notice how Leverkusen 2015/16 (53.0m) falls below the 2015/16 median, confirming that the aggressive losing-late press is a 2023/24 phenomenon specific to Alonso's system, not a persistent club trait. Only 4 of the 7 top teams appear, provided that Schalke, Mainz, and Hertha had insufficient pressing event data in the losing-late cell to produce reliable estimates and were excluded from the figure.
-
+Notice how Leverkusen 2015/16 (53.0 m) falls below the 2015/16 median, confirming that the aggressive losing-late press is a 2023/24 phenomenon specific to Alonso's system, not a persistent club trait. Only 4 of the 7 top teams appear, provided that Schalke, Mainz, and Hertha had insufficient pressing event data in the losing-late cell to produce reliable estimates and were excluded from the figure.
 
 ```{r scatter-plot-for-teams, fig.width=12, fig.height=5, out.width="100%"}
 
@@ -2086,7 +2085,8 @@ fig_scatter <- ggplot(plot_scatter,
     title = "Pressing Under Pressure: Two-Dimensional Team Profiles",
     subtitle = paste0(
       "x = mean press height when losing after 70' (higher = more aggressive)\n",
-      "y = press height gap: losing-late minus not-losing-late (positive = maintains press)\n",
+      "y = press height gap: losing-late minus not-losing-late (positive = maintains 
+      press)\n",
       "Dashed lines = 2015/16 top-7 medians | n = treatment cell size"
     ),
     x = "Press Height When Losing Late (m)",
@@ -2106,11 +2106,11 @@ ggsave("fig_benchmark_scatter.png", plot = fig_scatter,
 
 ```
 
-The scatter places each team on two dimensions simultaneously: on the x-axis, raw press height when losing late (how aggressive overall) is denoted, wheres on the y-axis, press maintenance index (how much they elevate press when losing) is displayed.
+The scatter places each team on two dimensions simultaneously: on the x-axis, raw press height when losing late (how aggressive overall) is denoted, whereas on the y-axis, press maintenance index (how much they elevate press when losing) is displayed.
 
-Leverkusen 2023/24 (red diamond) sits in the extreme top-right quadrant, and it is the only team that combines both the highest absolute press height (69.5m) and the strongest press maintenance (+8.80m). No 2015/16 team occupies this quadrant with comparable values.
+Leverkusen 2023/24 (red diamond) sits in the extreme top-right quadrant, and it is the only team that combines both the highest absolute press height (69.5 m) and the strongest press maintenance (+8.80 m). No 2015/16 team occupies this quadrant with comparable values.
 
-Dortmund (BVB) and Gladbach (BMG) show moderate maintenance but lower absolute height. Bayern Munich (BAY) presses high in absolute terms but shows relatively low maintenance (+2.52m), suggesting their high press is a general style rather than a situational comeback response. Leverkusen 2015/16 (LEV 15/16) sits in the bottom-left, with low absolute height and negative maintenance. This is the sharpest possible contrast with their 2023/24 season.
+Dortmund (BVB) and Gladbach (BMG) show moderate maintenance but lower absolute height. Bayern Munich (BAY) presses high in absolute terms but shows relatively low maintenance (+2.52 m), suggesting their high press is a general style rather than a situational comeback response. Leverkusen 2015/16 (LEV 15/16) sits in the bottom-left, with low absolute height and negative maintenance. This is the sharpest possible contrast with their 2023/24 season.
 
 ```{r press-profile-did-plots, fig.width=12, fig.height=5, out.width="100%"}
 
@@ -2160,9 +2160,9 @@ fig_profiles <- ggplot(plot_profiles,
   
   scale_linewidth_manual(values = c("FALSE" = 0.8, "TRUE" = 1.8),
                          guide = "none") +
-  scale_alpha_manual( values = c("FALSE" = 0.5, "TRUE" = 1.0),
+  scale_alpha_manual(values = c("FALSE" = 0.5, "TRUE" = 1.0),
                          guide = "none") +
-  scale_size_manual( values = c("FALSE" = 2,   "TRUE" = 4),
+  scale_size_manual(values = c("FALSE" = 2, "TRUE" = 4),
                          guide = "none") +
   scale_colour_manual(
     values = c("Losing" = "#d6604d", "Not Losing" = "#2166ac"),
@@ -2180,7 +2180,8 @@ fig_profiles <- ggplot(plot_profiles,
     title = "Full DiD Cell Profiles: Leverkusen 2023/24 vs 2015/16 Top Teams",
     subtitle = paste0(
       "Each panel = one team's mean press height across the 4 DiD cells\n",
-      "Bold lines = Leverkusen 2023/24 | Look for steeper Losing slope in treatment window"
+      "Bold lines = Leverkusen 2023/24 | Look for steeper Losing slope in treatment 
+      window"
     ),
     x = NULL,
     y = "Mean Press Height (m)"
@@ -2199,12 +2200,14 @@ fig_profiles <- ggplot(plot_profiles,
 print(fig_profiles)
 ggsave("fig_benchmark_profiles.png", plot = fig_profiles,
        width = 14, height = 7, dpi = 300)
-
 ```
 
-In the figure above, each panel shows a team's mean press height across the 4 DiD cells. Leverkusen 2023/24 (bottom-left, bold lines) clearly displays an upward slope on the Losing line (+2.5m early to late) while Not Losing drops sharply (-4m). This creates the widening gap that defines comeback pressing. For the case of Bayern Munich, both lines are relatively flat and close together, which singals high general pressing intensity but little situational adjustment.
+In the figure above, each panel shows a team's mean press height across the 4 DiD cells. Leverkusen 2023/24 (bottom-left, bold lines) clearly displays an upward slope on the Losing line (+2.5 m early to late) while Not Losing drops sharply (-4 m). This creates the widening gap that defines comeback pressing. 
 
-For the case of Dortmund, the losing line rises notably from ~60m to ~64m, and this is the 2015/16 team with the most similar profile to Leverkusen 2023/24, though at a much lower absolute level.
+For the case of Bayern Munich, both lines are relatively flat and close together, which signals high general pressing intensity but little situational adjustment.
+
+For the case of Dortmund, the losing line rises notably from ~60 m to ~64 m. This is the 2015/16 team with the most similar profile to Leverkusen 2023/24, though at a much lower absolute level.
+
 Gladbach's lines converge late, as the gap between losing and not-losing narrows after 70', suggesting they do not differentiate by score state.
 
 The Leverkusen 2015/16 is perhaps the most insightful panel, since the Losing line drops from early to late while Not Losing rises, producing a crossing pattern. Under Xabi Alonso's predecessor, losing late meant pressing lower, the complete tactical opposite of the 2023/24 system.
@@ -2242,9 +2245,9 @@ Our analysis investigated whether Bayer Leverkusen's 2023/24 unbeaten season was
 
 - Precision Trap Geography: Leverkusen does not press blindly. Their defensive structure is designed to funnel opponents into the advanced flanks, where their pressing traps peak at a highly efficient 36% to 39% success rate.
 
-- The Comeback Shift: When trailing after the 70th minute, Leverkusen breaks from natural game progression. Rather than dropping deeper as matches wear on, they enact a coordinated forward shift. While the aggregate DiD estimator (+1.36m in the restricted 30–70 minute specification) is visually muted, conditioning the model on opponent quality reveals massive tactical escalation against mid-tier teams (+9.97m). Against top-tier sides, they adopt a pragmatic stubbornness (+2.78m), refusing to concede territory to dangerous counter-attacking opponents.
+- The Comeback Shift: When trailing after the 70th minute, Leverkusen breaks from natural game progression. Rather than dropping deeper as matches wear on, they enact a coordinated forward shift. While the aggregate DiD estimator (+1.36 m in the restricted 30–70 minute specification) is visually muted, conditioning the model on opponent quality reveals massive tactical escalation against mid-tier teams (+9.97 m). Against top-tier sides, they adopt a pragmatic stubbornness (+2.78 m), refusing to concede territory to dangerous counter-attacking opponents.
 
-- A Historical Anomaly: Benchmarking this behavior against the top seven Bundesliga teams from the 2015/16 season with available data confirms that Alonso's system is an outlier, not an elite norm. Leverkusen 2023/24 posted the highest absolute press height when losing late (69.5m) and the most aggressive press maintenance index (+8.80m). Crucially, this is entirely a product of the current regime; the 2015/16 iteration of Leverkusen exhibited the exact opposite behavior, dropping their pressing lines significantly when behind.
+- A Historical Anomaly: Benchmarking this behavior against the top seven Bundesliga teams from the 2015/16 season with available data confirms that Alonso's system is an outlier, not an elite norm. Leverkusen 2023/24 posted the highest absolute press height when losing late (69.5 m) and the most aggressive press maintenance index (+8.80 m). Crucially, this is entirely a product of the current regime; the 2015/16 iteration of Leverkusen exhibited the exact opposite behavior, dropping their pressing lines significantly when behind.
 
 We must transparently acknowledge the statistical boundaries of this study. The large p-values and wide confidence intervals in our DiD estimators fall short of traditional significance thresholds. However, in the context of sports analytics, this is a feature rather than a bug of an unbeaten season. Bayer Leverkusen simply spent so few late-game minutes in a losing state that achieving robust statistical power is mathematically impossible.
 
